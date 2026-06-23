@@ -4,12 +4,18 @@ import {
   type ResolvedDestination,
   type EncryptionSpec,
   type SnapshotManifest,
+  type ResourceDescriptor,
+  type ResourceType,
   snapshotDir,
 } from "@cbm/shared";
 import { prisma } from "./prisma";
 import { decryptSecret } from "./crypto";
 import { effectivePolicy } from "./schedule";
+import { CoolifyClient, type DbEngine } from "./coolify";
+import { syncInstance } from "./discovery";
 import type { Destination } from "@/generated/prisma/client";
+
+const DUMP_ENGINES: DbEngine[] = ["postgresql", "mysql", "mariadb", "mongodb"];
 
 /** Decrypt a destination's stored config into a ResolvedDestination. */
 export function resolveDestination(dest: Destination): ResolvedDestination {
@@ -109,6 +115,45 @@ export async function enqueueBackup(resourceId: string, policyId?: string) {
   return { snapshotId: snapshot.id, agentId: agent.id, jobId: agentJob.id };
 }
 
+/**
+ * Clone a resource into a brand-new Coolify resource (same project/env/server,
+ * new name) for a "restore → new" so the original is never touched. Returns the
+ * descriptor the agent will resolve + restore into. DB engines only for now.
+ */
+async function cloneForRestore(
+  resource: { coolifyUuid: string; name: string; type: string; projectName: string; environment: string; instanceId: string },
+): Promise<ResourceDescriptor> {
+  const instance = await prisma.coolifyInstance.findUniqueOrThrow({ where: { id: resource.instanceId } });
+  const client = new CoolifyClient(instance.baseUrl, decryptSecret(instance.apiTokenEnc));
+  const short = resource.coolifyUuid.slice(0, 4) + Date.now().toString(36).slice(-4);
+  const newName = `${resource.name}-restored-${short}`.slice(0, 48);
+
+  if (DUMP_ENGINES.includes(resource.type as DbEngine)) {
+    const newUuid = await client.cloneDatabase({
+      sourceUuid: resource.coolifyUuid,
+      type: resource.type as DbEngine,
+      newName,
+      projectName: resource.projectName,
+      environmentName: resource.environment || "production",
+    });
+    await client.waitDatabaseRunning(newUuid);
+    // Surface the new resource in the controller UI.
+    await syncInstance(instance.id).catch(() => undefined);
+    return {
+      coolifyUuid: newUuid,
+      name: newName,
+      type: resource.type as ResourceType,
+      containerNames: [],
+      volumes: [],
+    };
+  }
+
+  throw new Error(
+    `Restore → new resource for "${resource.type}" is not available yet (databases work today; ` +
+      `compose/services and apps are coming next).`,
+  );
+}
+
 /** Create a RestoreJob + queued AgentJob from an existing snapshot. */
 export async function enqueueRestore(snapshotId: string, target: "in_place" | "new_resource" = "in_place") {
   const snapshot = await prisma.snapshot.findUniqueOrThrow({
@@ -121,6 +166,9 @@ export async function enqueueRestore(snapshotId: string, target: "in_place" | "n
   if (!agent) throw new Error("No agent available to run the restore");
 
   const enc = resolveEncryption(snapshot.destination);
+
+  // "→ new": clone into a fresh Coolify resource and restore into it.
+  const targetResource = target === "new_resource" ? await cloneForRestore(snapshot.resource) : undefined;
 
   const restore = await prisma.restoreJob.create({
     data: { snapshotId: snapshot.id, target, status: "running" },
@@ -143,6 +191,7 @@ export async function enqueueRestore(snapshotId: string, target: "in_place" | "n
     source: resolveDestination(snapshot.destination),
     decryptionKey: enc.enabled ? enc.key : undefined,
     target,
+    targetResource,
   };
 
   await prisma.agentJob.update({ where: { id: agentJob.id }, data: { payload: job as unknown as object } });

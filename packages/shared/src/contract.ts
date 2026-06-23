@@ -154,6 +154,12 @@ export const RestoreJob = z.object({
   /** When restoring DB dumps, the target container to exec into. */
   targetContainerName: z.string().optional(),
   db: DbCredentials.optional(),
+  /**
+   * For target=new_resource: the freshly-cloned Coolify resource the agent
+   * should restore INTO (resolved from its uuid on the live host), instead of
+   * the snapshot's original resource. The original is never touched.
+   */
+  targetResource: ResourceDescriptor.optional(),
 });
 export type RestoreJob = z.infer<typeof RestoreJob>;
 

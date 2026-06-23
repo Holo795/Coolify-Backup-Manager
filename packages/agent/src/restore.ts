@@ -1,7 +1,7 @@
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { RestoreJob } from "@cbm/shared";
-import { restoreDatabase, createDatabase } from "./dump.js";
+import { restoreDatabase } from "./dump.js";
 import { restoreVolume, stopContainer, startContainer, containerExists } from "./docker.js";
 import { decryptFile } from "./crypto.js";
 import { makeTransfer } from "./transfer.js";
@@ -37,38 +37,31 @@ export async function runRestore(job: RestoreJob, workDir: string, emit: Emit): 
     const dumps = manifest.artifacts.filter((a) => a.kind === "db-dump");
     const volumes = manifest.artifacts.filter((a) => a.kind === "volume");
 
-    // Safety: "restore → new" must never touch the original. The volume-restore
-    // path below overwrites the live volume in place, so until cloning to a real
-    // new Coolify resource lands, refuse new-target restores that carry volumes
-    // instead of silently destroying the source data.
-    if (job.target === "new_resource" && volumes.length > 0) {
-      throw new Error(
-        "Restore → new resource is not yet available for resources with volumes (it would overwrite the original). " +
-          "Use in-place restore, or restore a database dump into a new database.",
-      );
+    // Where to restore INTO: for "→ new" the freshly-cloned Coolify resource
+    // (resolved from its uuid on the live host), else the original. The clone
+    // keeps the same DB name + credentials, so the dump loads as-is, and the
+    // original is never touched in new mode.
+    const into = job.target === "new_resource" && job.targetResource ? job.targetResource : manifest.resource;
+
+    if (job.target === "new_resource") {
+      if (!job.targetResource) throw new Error("Restore → new resource: the controller provided no cloned target");
+      if (volumes.length > 0) {
+        // No volume remapping yet — refuse rather than risk the original.
+        throw new Error("Restore → new resource isn't available yet for resources with volumes (compose/apps next).");
+      }
     }
 
     // Restore DB dumps into the target container (logical restore, no downtime).
     if (dumps.length > 0) {
       // Re-resolve container + credentials from the live Docker host (manifest
       // intentionally carries no secrets).
-      const resolved = await resolveResource(manifest.resource);
-      const container = job.targetContainerName ?? resolved.containerName ?? manifest.resource.containerName;
-      if (!container) throw new Error("DB restore requires a target container name");
-      const creds = job.db ?? resolved.db ?? {};
+      const resolved = await resolveResource(into);
+      const container = resolved.containerName ?? into.containerName ?? job.targetContainerName;
+      if (!container) throw new Error(`DB restore requires a target container (resolving ${into.name})`);
+      const creds = resolved.db ?? job.db ?? {};
       for (const d of dumps) {
-        if (job.target === "new_resource") {
-          // Restore into a NEW database alongside the original (no overwrite).
-          const base = creds.database || "db";
-          const newName = `${base}_restored_${job.id.slice(-6)}`;
-          emit("info", `Restoring dump ${d.filename} into NEW database ${newName} (original untouched)`, 50);
-          await createDatabase(manifest.resource.type, container, creds, newName);
-          await restoreDatabase(manifest.resource.type, container, { ...creds, database: newName }, localFiles[d.filename]);
-          emit("info", `Restored into new database: ${newName}`);
-        } else {
-          emit("info", `Restoring dump ${d.filename} into ${container}`, 50);
-          await restoreDatabase(manifest.resource.type, container, creds, localFiles[d.filename]);
-        }
+        emit("info", `Restoring dump ${d.filename} into ${into.name} (${container})`, 50);
+        await restoreDatabase(into.type, container, creds, localFiles[d.filename]);
       }
     }
 

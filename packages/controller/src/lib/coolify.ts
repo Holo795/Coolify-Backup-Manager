@@ -15,6 +15,46 @@ export interface CoolifyResource {
   environmentId?: number;
 }
 
+export type DbEngine = "postgresql" | "mysql" | "mariadb" | "mongodb";
+
+/** Subset of a Coolify standalone-database config we read/clone. */
+export interface DbConfig {
+  uuid: string;
+  name: string;
+  status?: string;
+  image?: string;
+  destination?: { server?: { uuid?: string } };
+  [k: string]: unknown;
+}
+
+/** Map an original DB config to the per-engine credential fields for create. */
+function dbCredsBody(type: DbEngine, src: DbConfig): Record<string, unknown> {
+  switch (type) {
+    case "postgresql":
+      return { postgres_user: src.postgres_user, postgres_password: src.postgres_password, postgres_db: src.postgres_db };
+    case "mysql":
+      return {
+        mysql_user: src.mysql_user,
+        mysql_password: src.mysql_password,
+        mysql_database: src.mysql_database,
+        mysql_root_password: src.mysql_root_password,
+      };
+    case "mariadb":
+      return {
+        mariadb_user: src.mariadb_user,
+        mariadb_password: src.mariadb_password,
+        mariadb_database: src.mariadb_database,
+        mariadb_root_password: src.mariadb_root_password,
+      };
+    case "mongodb":
+      return {
+        mongo_initdb_root_username: src.mongo_initdb_root_username,
+        mongo_initdb_root_password: src.mongo_initdb_root_password,
+        mongo_initdb_database: src.mongo_initdb_database,
+      };
+  }
+}
+
 export class CoolifyClient {
   constructor(
     private baseUrl: string,
@@ -44,6 +84,17 @@ export class CoolifyClient {
     return (text ? JSON.parse(text) : {}) as T;
   }
 
+  private async post<T>(path: string, body: unknown): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${this.token}`, accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`Coolify POST ${path} -> ${res.status} ${text.slice(0, 400)}`);
+    return (text ? JSON.parse(text) : {}) as T;
+  }
+
   /**
    * Re-pin a Git application to a specific commit and redeploy, so the running
    * code matches restored data (avoids HEAD drift). The Coolify API stores
@@ -52,6 +103,60 @@ export class CoolifyClient {
   async repinCommit(appUuid: string, commitSha: string): Promise<void> {
     await this.patch(`/api/v1/applications/${appUuid}`, { git_commit_sha: commitSha });
     await this.get(`/api/v1/deploy?uuid=${appUuid}&force=true`);
+  }
+
+  /** Raw config of a standalone database resource. */
+  async getDatabase(uuid: string): Promise<DbConfig> {
+    return this.get<DbConfig>(`/api/v1/databases/${uuid}`);
+  }
+
+  /** Find a project's uuid by its display name. */
+  async findProjectUuid(name: string): Promise<string | undefined> {
+    const projects = await this.get<{ name: string; uuid: string }[]>("/api/v1/projects").catch(() => []);
+    return (projects ?? []).find((p) => p.name === name)?.uuid;
+  }
+
+  /**
+   * Clone a standalone database into a NEW Coolify resource: same project /
+   * environment / server, same image + credentials, new name, deployed so it
+   * can immediately receive a logical restore. Returns the new resource uuid.
+   */
+  async cloneDatabase(opts: {
+    sourceUuid: string;
+    type: DbEngine;
+    newName: string;
+    projectName: string;
+    environmentName: string;
+  }): Promise<string> {
+    const src = await this.getDatabase(opts.sourceUuid);
+    const serverUuid = src?.destination?.server?.uuid;
+    if (!serverUuid) throw new Error("Could not resolve the source database's server for cloning");
+    const projectUuid = await this.findProjectUuid(opts.projectName);
+    if (!projectUuid) throw new Error(`Coolify project "${opts.projectName}" not found for cloning`);
+
+    const body = {
+      server_uuid: serverUuid,
+      project_uuid: projectUuid,
+      environment_name: opts.environmentName,
+      name: opts.newName,
+      image: src.image,
+      instant_deploy: true,
+      ...dbCredsBody(opts.type, src),
+    };
+    const created = await this.post<{ uuid?: string }>(`/api/v1/databases/${opts.type}`, body);
+    if (!created?.uuid) throw new Error("Coolify did not return a uuid for the cloned database");
+    return created.uuid;
+  }
+
+  /** Poll a database resource until its container reports running (or timeout). */
+  async waitDatabaseRunning(uuid: string, timeoutMs = 120_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const d = await this.getDatabase(uuid).catch(() => null);
+      if (d && /running/i.test(d.status ?? "")) return;
+      if (Date.now() > deadline) throw new Error(`Cloned database not running after ${timeoutMs / 1000}s`);
+      await new Promise((r) => setTimeout(r, 3000));
+    }
   }
 
   /** Quick connectivity / auth check. The version endpoint returns plain text. */
