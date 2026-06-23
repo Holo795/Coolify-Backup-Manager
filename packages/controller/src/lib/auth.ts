@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
+import { APIError } from "better-auth/api";
 import { prisma } from "./prisma";
 import { env } from "./env";
 
@@ -34,6 +35,23 @@ export const auth = betterAuth({
   },
   socialProviders,
   trustedOrigins: [env.authUrl, "http://localhost:3000"],
+  databaseHooks: {
+    user: {
+      create: {
+        // The first person to register becomes the admin; registration is then
+        // closed. Blocks every sign-up path (email + social) once a user exists.
+        before: async (user) => {
+          const count = await prisma.user.count();
+          if (count > 0) {
+            throw new APIError("FORBIDDEN", {
+              message: "Registration is closed — an account already exists.",
+            });
+          }
+          return { data: user };
+        },
+      },
+    },
+  },
 });
 
 export type Auth = typeof auth;

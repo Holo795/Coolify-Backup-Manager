@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { AgentRegisterRequest } from "@cbm/shared";
 import { prisma } from "@/lib/prisma";
-import { env } from "@/lib/env";
 import { randomToken, sha256Hex } from "@/lib/crypto";
 
 export async function POST(req: Request) {
@@ -19,30 +18,19 @@ export async function POST(req: Request) {
 
   // Zero-config: a per-instance enrollment token both authenticates the agent
   // AND identifies which Coolify instance it serves -> auto-link, no INSTANCE_UUID.
-  // Only the sha256 hash is stored, so we match on the hash.
-  let instanceId: string | undefined;
+  // Only the sha256 hash is stored, so we match on the hash. A token that matches
+  // nothing (rotated/revoked) is rejected so the agent reconfigures with a freshly
+  // revealed install command.
   const byToken = await prisma.coolifyInstance.findFirst({
     where: { enrollTokenHash: sha256Hex(data.enrollmentToken) },
   });
-  if (byToken) {
-    instanceId = byToken.id;
-  } else if (data.enrollmentToken.startsWith("cbm_")) {
-    // Looks like a per-instance token but matched nothing -> rotated or revoked.
-    // Signal the agent to reconfigure with a freshly revealed install command.
+  if (!byToken) {
     return NextResponse.json(
       { error: "enrollment token invalid or rotated — reveal a new install command in the controller" },
       { status: 401 },
     );
-  } else {
-    // Fallback: a global enrollment token (manual link via UI later).
-    if (env.enrollmentToken && data.enrollmentToken !== env.enrollmentToken) {
-      return NextResponse.json({ error: "invalid enrollment token" }, { status: 401 });
-    }
-    if (data.instanceUuid) {
-      const inst = await prisma.coolifyInstance.findFirst({ where: { id: data.instanceUuid } });
-      instanceId = inst?.id;
-    }
   }
+  const instanceId = byToken.id;
 
   // Idempotent per host: one agent identity per (instance, hostname). Restarting
   // or re-running the install command reuses the same Agent row (and rotates its

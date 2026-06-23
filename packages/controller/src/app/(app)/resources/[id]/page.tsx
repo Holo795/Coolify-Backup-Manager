@@ -5,12 +5,12 @@ import { PageHeader } from "@/components/page-header";
 import { ActionForm } from "@/components/action-form";
 import { ScheduleForm } from "@/components/schedule-form";
 import { ActionButton } from "@/components/action-button";
-import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Select, Label, statusTone } from "@/components/ui";
+import { Card, CardContent, CardHeader, CardTitle, Badge, Select, Label, statusTone } from "@/components/ui";
 import { setResourceOptions, setResourceSchedule, removeResourceOverride, backupNow, restoreSnapshot } from "@/app/actions";
 import { effectivePolicy, describeCron, cronToFrequency } from "@/lib/schedule";
 import { formatBytes, timeAgo } from "@/lib/cn";
 import { DUMPABLE_DB_TYPES } from "@cbm/shared";
-import { Play, RotateCcw, ArrowLeft } from "lucide-react";
+import { Play, RotateCcw, ArrowLeft, Unplug } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -49,11 +49,7 @@ export default async function ResourceDetail({ params }: { params: Promise<{ id:
         title={resource.name}
         description={`${resource.type} · ${resource.instance.name}${resource.projectName ? " · " + resource.projectName : ""}`}
         action={
-          agentDown ? (
-            <Button variant="primary" size="md" disabled title="No live agent for this instance">
-              <Play className="h-4 w-4" /> Back up now
-            </Button>
-          ) : (
+          agentDown ? undefined : (
             <ActionButton action={backupNow.bind(null, resource.id)} variant="primary" size="md" successMsg="Backup queued">
               <Play className="h-4 w-4" /> Back up now
             </ActionButton>
@@ -61,13 +57,11 @@ export default async function ResourceDetail({ params }: { params: Promise<{ id:
         }
       />
 
-      {agentDown && (
-        <div className="mb-4 flex items-center gap-2 rounded-md border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 px-3 py-2 text-sm text-[var(--color-warning)]">
-          No live agent for <b>{resource.instance.name}</b> — backups and restores can&apos;t run until an agent is
-          installed on this Coolify host.
-        </div>
-      )}
-
+      <div className="relative">
+        <div
+          className={agentDown ? "pointer-events-none select-none blur-[3px]" : ""}
+          aria-hidden={agentDown || undefined}
+        >
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -188,26 +182,21 @@ export default async function ResourceDetail({ params }: { params: Promise<{ id:
                     <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{formatBytes(s.sizeBytes)}</td>
                     <td className="px-4 py-2.5 text-muted-foreground">{s.destination.name}</td>
                     <td className="px-4 py-2.5">
-                      {s.status === "succeeded" &&
-                        (agentDown ? (
-                          <span className="text-xs text-muted-foreground" title="No live agent for this instance">
-                            restore unavailable
-                          </span>
-                        ) : (
-                          <div className="flex gap-1.5">
-                            <ActionButton
-                              action={restoreSnapshot.bind(null, s.id, "in_place")}
-                              variant="outline"
-                              size="sm"
-                              confirm="Restore this snapshot in place? This overwrites current data."
-                            >
-                              <RotateCcw className="h-3.5 w-3.5" /> Restore
-                            </ActionButton>
-                            <ActionButton action={restoreSnapshot.bind(null, s.id, "new_resource")} variant="ghost" size="sm">
-                              → new
-                            </ActionButton>
-                          </div>
-                        ))}
+                      {s.status === "succeeded" && (
+                        <div className="flex gap-1.5">
+                          <ActionButton
+                            action={restoreSnapshot.bind(null, s.id, "in_place")}
+                            variant="outline"
+                            size="sm"
+                            confirm="Restore this snapshot in place? This overwrites current data."
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" /> Restore
+                          </ActionButton>
+                          <ActionButton action={restoreSnapshot.bind(null, s.id, "new_resource")} variant="ghost" size="sm">
+                            → new
+                          </ActionButton>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -216,6 +205,20 @@ export default async function ResourceDetail({ params }: { params: Promise<{ id:
           </CardContent>
         </Card>
       )}
+        </div>
+        {agentDown && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center p-4">
+            <div className="flex max-w-sm flex-col items-center gap-2 rounded-xl border bg-card/80 px-6 py-5 text-center shadow-lg backdrop-blur-sm">
+              <Unplug className="h-6 w-6 text-[var(--color-warning)]" />
+              <div className="font-medium">Agent unavailable</div>
+              <p className="text-sm text-muted-foreground">
+                Cette ressource n&apos;est pas disponible : aucun agent n&apos;est installé sur{" "}
+                <span className="text-foreground">{resource.instance.name}</span>.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
     </>
   );
 }
