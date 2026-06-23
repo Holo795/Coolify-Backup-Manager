@@ -69,6 +69,7 @@ export async function revealInstallCommand(
     "docker rm -f cbm-agent 2>/dev/null",
     "docker run -d --name cbm-agent --restart unless-stopped \\",
     "  -v /var/run/docker.sock:/var/run/docker.sock \\",
+    "  -v cbm-backups:/backups \\",
     `  -e CONTROLLER_URL=${base} \\`,
     `  -e ENROLLMENT_TOKEN=${token} \\`,
     '  -e AGENT_HOSTNAME="$(hostname)" \\',
@@ -152,7 +153,9 @@ export async function createDestination(fd: FormData) {
 
   let config: unknown;
   if (type === "local") {
-    config = { type: "local", basePath: s(fd, "basePath") };
+    // Local always writes to the agent host's persistent /backups volume
+    // (mounted by the install command), so it survives agent recreation.
+    config = { type: "local", basePath: "/backups" };
   } else if (type === "ssh") {
     config = {
       type: "ssh",

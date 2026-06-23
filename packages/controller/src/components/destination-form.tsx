@@ -38,7 +38,11 @@ export function DestinationForm() {
       </div>
 
       {type === "local" && (
-        <Field name="basePath" label="Base path" placeholder="/backups" />
+        <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+          Stored on the <b className="text-foreground">agent host</b> in a persistent volume — the path is fixed to{" "}
+          <span className="font-mono text-foreground">/backups</span> (the <span className="font-mono">cbm-backups</span>{" "}
+          Docker volume mounted by the install command), so it survives agent restarts. Nothing to configure.
+        </div>
       )}
 
       {type === "ssh" && (

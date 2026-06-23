@@ -47,6 +47,7 @@ fi
 echo "==> Starting cbm-agent"
 docker run -d --name cbm-agent --restart unless-stopped \\
   -v /var/run/docker.sock:/var/run/docker.sock \\
+  -v cbm-backups:/backups \\
   -e CONTROLLER_URL="\$CONTROLLER_URL" \\
   -e ENROLLMENT_TOKEN="\$TOKEN" \\
   -e AGENT_HOSTNAME="\$(hostname)" \\
