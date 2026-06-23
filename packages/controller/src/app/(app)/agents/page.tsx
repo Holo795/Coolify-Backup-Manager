@@ -22,7 +22,7 @@ export default async function AgentsPage() {
         <EmptyState
           icon={<Cpu className="h-6 w-6" />}
           title="No agents connected"
-          hint="Connect a Coolify instance with “Auto-deploy” enabled, or use its one-line install command — the agent links itself."
+          hint="Connect a Coolify instance, then run its one-line install command (Reveal install command) on the host — the agent enrolls and links itself."
         />
       ) : (
         <Card>

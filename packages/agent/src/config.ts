@@ -18,7 +18,6 @@ export interface AgentConfig {
   enrollmentToken: string;
   agentToken: string;
   hostname: string;
-  instanceUuid: string;
   workDir: string;
   dockerBin: string;
   pollIntervalMs: number;
@@ -31,7 +30,6 @@ export function loadConfig(): AgentConfig {
     enrollmentToken: optional("ENROLLMENT_TOKEN"),
     agentToken: optional("AGENT_TOKEN"),
     hostname: optional("AGENT_HOSTNAME", os.hostname()),
-    instanceUuid: optional("INSTANCE_UUID"),
     workDir: optional("AGENT_WORK_DIR", "/tmp/cbm-agent"),
     dockerBin: optional("DOCKER_BIN", "docker"),
     pollIntervalMs: Number(optional("POLL_INTERVAL_MS", "5000")),

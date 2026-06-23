@@ -17,9 +17,9 @@ export async function POST(req: Request) {
   const data = parsed.data;
 
   // Zero-config: a per-instance enrollment token both authenticates the agent
-  // AND identifies which Coolify instance it serves -> auto-link, no INSTANCE_UUID.
-  // Only the sha256 hash is stored, so we match on the hash. A token that matches
-  // nothing (rotated/revoked) is rejected so the agent reconfigures with a freshly
+  // AND identifies which Coolify instance it serves -> auto-link. Only the sha256
+  // hash is stored, so we match on the hash. A token that matches nothing
+  // (rotated/revoked) is rejected so the agent reconfigures with a freshly
   // revealed install command.
   const byToken = await prisma.coolifyInstance.findFirst({
     where: { enrollTokenHash: sha256Hex(data.enrollmentToken) },

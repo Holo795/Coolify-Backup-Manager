@@ -165,10 +165,10 @@ export type Job = z.infer<typeof Job>;
  * ------------------------------------------------------------------ */
 
 export const AgentRegisterRequest = z.object({
+  // Per-instance enrollment token: authenticates the agent AND identifies which
+  // Coolify instance it serves (zero-config auto-link).
   enrollmentToken: z.string().min(1),
   hostname: z.string().min(1),
-  /** Coolify instance this agent serves (optional, can be linked later). */
-  instanceUuid: z.string().optional(),
   agentVersion: z.string().default("0.1.0"),
 });
 export type AgentRegisterRequest = z.infer<typeof AgentRegisterRequest>;

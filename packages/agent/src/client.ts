@@ -22,7 +22,6 @@ export async function register(cfg: AgentConfig): Promise<AgentRegisterResponse>
       body: JSON.stringify({
         enrollmentToken: cfg.enrollmentToken,
         hostname: cfg.hostname,
-        instanceUuid: cfg.instanceUuid || undefined,
         agentVersion: "0.1.0",
       }),
     },

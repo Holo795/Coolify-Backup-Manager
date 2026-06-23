@@ -50,11 +50,14 @@ npm run db:push --workspace @cbm/controller
 npm run dev --workspace @cbm/controller                # http://localhost:3000
 ```
 
-Run an agent against it:
+Open http://localhost:3000 and create your account — the first person to
+register becomes the admin, then sign-up closes. Connect a Coolify instance,
+then hit **Reveal install command** on its card to get a one-time enrollment
+token and run an agent against it:
 
 ```bash
 npm run build --workspace @cbm/shared && npm run build --workspace @cbm/agent
-CONTROLLER_URL=http://localhost:3000 ENROLLMENT_TOKEN=dev-enroll-token \
+CONTROLLER_URL=http://localhost:3000 ENROLLMENT_TOKEN=cbm_… \
   node packages/agent/dist/index.js
 ```
 
@@ -62,16 +65,18 @@ CONTROLLER_URL=http://localhost:3000 ENROLLMENT_TOKEN=dev-enroll-token \
 
 - **Controller**: `docker compose -f docker-compose.coolify.yml up -d` (or deploy
   `Dockerfile.controller` as a Coolify application). Set `BETTER_AUTH_SECRET`,
-  `MASTER_KEY`, `ENROLLMENT_TOKEN`, and a seed admin.
-- **Agent** (one per Docker host):
+  `MASTER_KEY`, `BETTER_AUTH_URL`, and `AGENT_IMAGE` (the published agent image).
+  The first account created is the admin; registration then closes.
+- **Agent** (one per Docker host): in the UI, connect the instance and use
+  **Reveal install command** — a one-liner that mounts the Docker socket and
+  reconfigures in place if already installed:
 
   ```bash
-  docker run -d --name cbm-agent --restart unless-stopped \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    -e CONTROLLER_URL=https://your-controller \
-    -e ENROLLMENT_TOKEN=... \
-    ghcr.io/your-org/cbm-agent:latest        # built from Dockerfile.agent
+  curl -fsSL https://your-controller/install.sh | CBM_TOKEN=cbm_… sh
   ```
+
+  The agent is installed directly (not via the Coolify API), because Coolify's
+  deploy path strips the Docker socket mount the agent needs.
 
 ## The Git/HEAD problem
 

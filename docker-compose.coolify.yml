@@ -27,9 +27,9 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set a long random secret}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       MASTER_KEY: ${MASTER_KEY:-}
-      ENROLLMENT_TOKEN: ${ENROLLMENT_TOKEN:-}
-      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
-      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      # Image the install command / /install.sh tells hosts to run.
+      AGENT_IMAGE: ${AGENT_IMAGE:-ghcr.io/your-org/cbm-agent}
+      AGENT_IMAGE_TAG: ${AGENT_IMAGE_TAG:-latest}
     ports:
       - "3000:3000"
 
