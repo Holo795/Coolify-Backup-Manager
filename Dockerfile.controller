@@ -1,0 +1,27 @@
+# Controller image — Next.js standalone build.
+FROM node:22-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json* ./
+COPY packages/shared/package.json packages/shared/
+COPY packages/controller/package.json packages/controller/
+COPY packages/agent/package.json packages/agent/
+RUN npm install --ignore-scripts
+COPY packages/shared packages/shared
+COPY packages/controller packages/controller
+RUN npm run build --workspace @cbm/shared \
+  && npm run build --workspace @cbm/controller
+
+FROM node:22-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=3000
+# Standalone server bundle (includes traced node_modules).
+COPY --from=build /app/packages/controller/.next/standalone ./
+COPY --from=build /app/packages/controller/.next/static ./packages/controller/.next/static
+# Prisma assets + full node_modules so `prisma migrate deploy` works at startup.
+COPY --from=build /app/packages/controller/prisma ./packages/controller/prisma
+COPY --from=build /app/packages/controller/prisma.config.ts ./packages/controller/prisma.config.ts
+COPY --from=build /app/node_modules ./node_modules
+EXPOSE 3000
+# Apply migrations then start the standalone server.
+CMD ["sh", "-c", "cd /app/packages/controller && (npx prisma migrate deploy || echo 'migrate skipped') && cd /app && node packages/controller/server.js"]

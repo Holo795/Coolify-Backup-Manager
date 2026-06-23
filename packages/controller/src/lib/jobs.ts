@@ -1,0 +1,151 @@
+import {
+  type BackupJob,
+  type RestoreJob,
+  type ResolvedDestination,
+  type EncryptionSpec,
+  type SnapshotManifest,
+  snapshotDir,
+} from "@cbm/shared";
+import { prisma } from "./prisma";
+import { decryptSecret } from "./crypto";
+import { effectivePolicy } from "./schedule";
+import type { Destination } from "@/generated/prisma/client";
+
+/** Decrypt a destination's stored config into a ResolvedDestination. */
+export function resolveDestination(dest: Destination): ResolvedDestination {
+  return JSON.parse(decryptSecret(dest.configEnc)) as ResolvedDestination;
+}
+
+export function resolveEncryption(dest: Destination): EncryptionSpec {
+  if (dest.encryptionEnabled && dest.encryptionKeyEnc) {
+    return { enabled: true, key: decryptSecret(dest.encryptionKeyEnc) };
+  }
+  return { enabled: false };
+}
+
+/** Pick an agent to run jobs for a given Coolify instance. */
+async function pickAgent(instanceId: string) {
+  const forInstance = await prisma.agent.findFirst({
+    where: { instanceId, status: "online" },
+    orderBy: { lastSeenAt: "desc" },
+  });
+  if (forInstance) return forInstance;
+  // Fall back to any agent linked to the instance, then any agent at all.
+  return (
+    (await prisma.agent.findFirst({ where: { instanceId } })) ??
+    (await prisma.agent.findFirst({ orderBy: { lastSeenAt: "desc" } }))
+  );
+}
+
+/** Create a Snapshot + queued AgentJob for a backup. */
+export async function enqueueBackup(resourceId: string, policyId?: string) {
+  const resource = await prisma.resource.findUniqueOrThrow({ where: { id: resourceId } });
+  let policy = policyId
+    ? await prisma.backupPolicy.findUniqueOrThrow({ where: { id: policyId }, include: { destination: true } })
+    : null;
+
+  // For a manual "Backup now", fall back to the resource's effective schedule
+  // (resource override -> instance -> global) to pick destination + mode.
+  if (!policy) {
+    const eff = await effectivePolicy(resource.id);
+    policy = eff.policy ?? null;
+  }
+
+  const dest = policy?.destination ?? (await prisma.destination.findFirst());
+  if (!dest) throw new Error("No destination configured");
+
+  const agent = await pickAgent(resource.instanceId);
+  if (!agent) throw new Error("No agent available to run the job");
+
+  const mode = (policy?.mode ?? "backup") as "backup" | "sync";
+  const captureMode = resource.captureMode as "cold" | "hot";
+  const iso = new Date().toISOString();
+  const dir = snapshotDir(resource.coolifyUuid, mode, iso);
+
+  const snapshot = await prisma.snapshot.create({
+    data: {
+      resourceId: resource.id,
+      policyId: policy?.id,
+      destinationId: dest.id,
+      mode,
+      captureMode,
+      status: "running",
+      destinationDir: dir,
+    },
+  });
+
+  // Create the AgentJob first so its id can be used as the job correlation id
+  // (agents post events/results to /api/agents/jobs/<agentJob.id>/...).
+  const agentJob = await prisma.agentJob.create({
+    data: {
+      agentId: agent.id,
+      type: "backup",
+      status: "queued",
+      payload: {},
+      snapshotId: snapshot.id,
+    },
+  });
+
+  const job: BackupJob = {
+    id: agentJob.id,
+    type: "backup",
+    mode,
+    captureMode,
+    resource: {
+      coolifyUuid: resource.coolifyUuid,
+      name: resource.name,
+      type: resource.type as BackupJob["resource"]["type"],
+      containerName: resource.containerName ?? undefined,
+      containerNames: resource.containerNames,
+      volumes: resource.volumes,
+    },
+    destination: resolveDestination(dest),
+    encryption: resolveEncryption(dest),
+    destinationDir: dir,
+  };
+
+  await prisma.agentJob.update({ where: { id: agentJob.id }, data: { payload: job as unknown as object } });
+
+  return { snapshotId: snapshot.id, agentId: agent.id, jobId: agentJob.id };
+}
+
+/** Create a RestoreJob + queued AgentJob from an existing snapshot. */
+export async function enqueueRestore(snapshotId: string, target: "in_place" | "new_resource" = "in_place") {
+  const snapshot = await prisma.snapshot.findUniqueOrThrow({
+    where: { id: snapshotId },
+    include: { destination: true, resource: true },
+  });
+  if (!snapshot.manifest) throw new Error("Snapshot has no manifest; cannot restore");
+
+  const agent = await pickAgent(snapshot.resource.instanceId);
+  if (!agent) throw new Error("No agent available to run the restore");
+
+  const enc = resolveEncryption(snapshot.destination);
+
+  const restore = await prisma.restoreJob.create({
+    data: { snapshotId: snapshot.id, target, status: "running" },
+  });
+
+  const agentJob = await prisma.agentJob.create({
+    data: {
+      agentId: agent.id,
+      type: "restore",
+      status: "queued",
+      payload: {},
+      restoreId: restore.id,
+    },
+  });
+
+  const job: RestoreJob = {
+    id: agentJob.id,
+    type: "restore",
+    manifest: snapshot.manifest as unknown as SnapshotManifest,
+    source: resolveDestination(snapshot.destination),
+    decryptionKey: enc.enabled ? enc.key : undefined,
+    target,
+  };
+
+  await prisma.agentJob.update({ where: { id: agentJob.id }, data: { payload: job as unknown as object } });
+
+  return { restoreId: restore.id, agentId: agent.id, jobId: agentJob.id };
+}

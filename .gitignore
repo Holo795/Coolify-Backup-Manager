@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.next/
+out/
+*.log
+.env
+.env.local
+generated/
+coverage/
+.DS_Store
+/tmp-test/
+*.tsbuildinfo

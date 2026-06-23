@@ -1,0 +1,16 @@
+# Local dev: Postgres for the controller's metadata DB.
+services:
+  controller-db:
+    image: postgres:17-alpine
+    container_name: cbm-controller-db
+    environment:
+      POSTGRES_USER: cbm
+      POSTGRES_PASSWORD: cbm
+      POSTGRES_DB: cbm
+    ports:
+      - "5544:5432"
+    volumes:
+      - cbm-controller-db:/var/lib/postgresql/data
+
+volumes:
+  cbm-controller-db:

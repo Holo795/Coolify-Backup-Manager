@@ -1,0 +1,233 @@
+// Coolify Backup Manager — controller metadata schema (Prisma 7).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Better Auth tables (credentials + optional OAuth)
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  role          String    @default("admin")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Domain
+// ---------------------------------------------------------------------------
+
+model CoolifyInstance {
+  id                String     @id @default(cuid())
+  name              String
+  baseUrl           String
+  apiTokenEnc       String     // encrypted at rest
+  enrollToken       String     @unique // per-instance agent enrollment token (zero-config self-link)
+  agentResourceUuid String?    // Coolify resource uuid of the auto-deployed agent
+  agentDeployStatus String     @default("none") // none | deploying | deployed | failed
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  lastSyncedAt      DateTime?
+  agents            Agent[]
+  resources         Resource[]
+  policies          BackupPolicy[]
+}
+
+model Agent {
+  id            String          @id @default(cuid())
+  hostname      String
+  tokenHash     String          @unique // sha256 of the agent bearer token
+  instanceId    String?
+  instance      CoolifyInstance? @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+  status        String          @default("pending") // pending | online | offline
+  dockerVersion String?
+  containers    Int?
+  lastSeenAt    DateTime?
+  createdAt     DateTime        @default(now())
+  jobs          AgentJob[]
+}
+
+model Resource {
+  id           String        @id @default(cuid())
+  instanceId   String
+  instance     CoolifyInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  coolifyUuid  String
+  name         String
+  type         String        // postgresql | mysql | ... | application | service
+  projectName  String        @default("")
+  environment  String        @default("")
+  buildPack    String?
+  status       String        @default("unknown")
+  // Per-resource backup settings
+  backupEnabled Boolean      @default(false)
+  captureMode  String        @default("cold") // cold | hot
+  excluded     Boolean       @default(false)
+  retentionOverride Int?
+  // Agent-discovered docker facts (cached)
+  containerName String?
+  containerNames String[]     @default([])
+  volumes       String[]      @default([])
+  policies     BackupPolicy[]
+  snapshots    Snapshot[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([instanceId, coolifyUuid])
+}
+
+model Destination {
+  id              String        @id @default(cuid())
+  name            String
+  type            String        // local | ssh | s3
+  configEnc       String        // encrypted JSON (paths, creds)
+  encryptionEnabled Boolean     @default(false)
+  encryptionKeyEnc String?      // encrypted base64 AES key
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  policies        BackupPolicy[]
+  snapshots       Snapshot[]
+}
+
+model BackupPolicy {
+  id            String      @id @default(cuid())
+  name          String
+  mode          String      @default("backup") // backup | sync
+  cron          String      @default("0 2 * * *")
+  retentionDaily   Int      @default(7)
+  retentionWeekly  Int      @default(4)
+  retentionMonthly Int      @default(6)
+  enabled       Boolean     @default(true)
+  destinationId String
+  destination   Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  // Scope (most specific wins): a resource override, else a whole instance,
+  // else global (both null). A resource inherits its instance's schedule.
+  resourceId    String?
+  resource      Resource?   @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  instanceId    String?
+  instance      CoolifyInstance? @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  snapshots     Snapshot[]
+}
+
+model Snapshot {
+  id            String       @id @default(cuid())
+  resourceId    String
+  resource      Resource     @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  policyId      String?
+  policy        BackupPolicy? @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  destinationId String
+  destination   Destination  @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  mode          String       // backup | sync
+  captureMode   String       // cold | hot
+  status        String       @default("running") // running | succeeded | failed
+  destinationDir String
+  manifest      Json?
+  sizeBytes     BigInt       @default(0)
+  error         String?
+  startedAt     DateTime     @default(now())
+  finishedAt    DateTime?
+  artifacts     Artifact[]
+  restoreJobs   RestoreJob[]
+}
+
+model Artifact {
+  id         String   @id @default(cuid())
+  snapshotId String
+  snapshot   Snapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  kind       String
+  filename   String
+  sizeBytes  BigInt   @default(0)
+  sha256     String?
+  encrypted  Boolean  @default(false)
+}
+
+model RestoreJob {
+  id         String   @id @default(cuid())
+  snapshotId String
+  snapshot   Snapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  target     String   @default("in_place")
+  status     String   @default("running")
+  error      String?
+  createdAt  DateTime @default(now())
+  finishedAt DateTime?
+}
+
+// Agent-facing job queue (pulled by agents). pg-boss schedules policy runs
+// which insert rows here; agents long-poll for the next queued row.
+model AgentJob {
+  id         String     @id @default(cuid())
+  agentId    String
+  agent      Agent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  type       String     // backup | restore
+  status     String     @default("queued") // queued | running | succeeded | failed
+  payload    Json       // the full Job object (shared contract)
+  snapshotId String?    // linked snapshot for backups
+  restoreId  String?
+  error      String?
+  events     JobEvent[]
+  createdAt  DateTime   @default(now())
+  claimedAt  DateTime?
+  finishedAt DateTime?
+}
+
+model JobEvent {
+  id        String   @id @default(cuid())
+  jobId     String
+  job       AgentJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  level     String   @default("info")
+  message   String
+  progress  Int?
+  ts        DateTime @default(now())
+}

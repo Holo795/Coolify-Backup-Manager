@@ -1,0 +1,37 @@
+# Production deployment (e.g. on Coolify): controller + its Postgres.
+# Deploy one agent per Docker host separately (see Dockerfile.agent / README).
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: cbm
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-cbm}
+      POSTGRES_DB: cbm
+    volumes:
+      - cbm-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cbm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  controller:
+    build:
+      context: .
+      dockerfile: Dockerfile.controller
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://cbm:${DB_PASSWORD:-cbm}@db:5432/cbm
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set a long random secret}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      MASTER_KEY: ${MASTER_KEY:-}
+      ENROLLMENT_TOKEN: ${ENROLLMENT_TOKEN:-}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+    ports:
+      - "3000:3000"
+
+volumes:
+  cbm-db:
