@@ -163,7 +163,16 @@ export const RestoreJob = z.object({
 });
 export type RestoreJob = z.infer<typeof RestoreJob>;
 
-export const Job = z.discriminatedUnion("type", [BackupJob, RestoreJob]);
+export const PruneJob = z.object({
+  id: z.string(),
+  type: z.literal("prune"),
+  destination: ResolvedDestination,
+  /** Relative directories at the destination to delete recursively. */
+  dirs: z.array(z.string()),
+});
+export type PruneJob = z.infer<typeof PruneJob>;
+
+export const Job = z.discriminatedUnion("type", [BackupJob, RestoreJob, PruneJob]);
 export type Job = z.infer<typeof Job>;
 
 /* ------------------------------------------------------------------ *

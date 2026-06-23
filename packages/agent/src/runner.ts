@@ -2,6 +2,7 @@ import type { Job, JobResult, JobEvent } from "@cbm/shared";
 import type { AgentConfig } from "./config.js";
 import { runBackup, type Emit } from "./backup.js";
 import { runRestore } from "./restore.js";
+import { runPrune } from "./prune.js";
 import { logger } from "./logger.js";
 import { sendEvent } from "./client.js";
 
@@ -24,8 +25,11 @@ export async function executeJob(
     if (job.type === "backup") {
       const manifest = await runBackup(job, workDir, emit);
       return { jobId: job.id, status: "succeeded", manifest };
-    } else {
+    } else if (job.type === "restore") {
       await runRestore(job, workDir, emit);
+      return { jobId: job.id, status: "succeeded" };
+    } else {
+      await runPrune(job, emit);
       return { jobId: job.id, status: "succeeded" };
     }
   } catch (err) {

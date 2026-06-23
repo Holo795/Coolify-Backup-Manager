@@ -7,7 +7,7 @@ import { requireUser } from "@/lib/session";
 import { encryptSecret, decryptSecret, generateAesKeyB64, randomToken, sha256Hex } from "@/lib/crypto";
 import { CoolifyClient } from "@/lib/coolify";
 import { syncInstance } from "@/lib/discovery";
-import { enqueueBackup, enqueueRestore, resolveDestination } from "@/lib/jobs";
+import { enqueueBackup, enqueueRestore, enqueuePrune, resolveDestination } from "@/lib/jobs";
 import { isValidCron } from "@/lib/cron";
 import { freqToCron } from "@/lib/schedule";
 
@@ -197,6 +197,25 @@ export async function createDestination(fd: FormData) {
 
 export async function deleteDestination(id: string) {
   await requireUser();
+  const dest = await prisma.destination.findUnique({ where: { id } });
+  if (dest) {
+    // Delete the actual files first (via each owning instance's agent), grouped
+    // by instance, before the records cascade away with the destination.
+    const snaps = await prisma.snapshot.findMany({
+      where: { destinationId: id },
+      select: { destinationDir: true, resource: { select: { instanceId: true } } },
+    });
+    const byInstance = new Map<string | null, string[]>();
+    for (const s of snaps) {
+      const k = s.resource.instanceId;
+      byInstance.set(k, [...(byInstance.get(k) ?? []), s.destinationDir]);
+    }
+    for (const [instanceId, dirs] of byInstance) {
+      await enqueuePrune({ instanceId, destination: dest, dirs }).catch((e) =>
+        console.warn("[delete-destination] prune failed", (e as Error).message),
+      );
+    }
+  }
   await prisma.destination.delete({ where: { id } });
   revalidatePath("/destinations");
 }
@@ -222,11 +241,26 @@ export async function cancelSnapshot(snapshotId: string): Promise<void> {
   revalidatePath("/snapshots");
 }
 
-/** Delete a snapshot (and its artifact/restore records). Files on the remote
- * destination are not touched. */
+/** Delete a snapshot: removes its files from the destination (via the agent),
+ * then drops the record. If no agent is online the record is still removed and
+ * the files are left in place. */
 export async function deleteSnapshot(snapshotId: string): Promise<void> {
   await requireUser();
-  const snap = await prisma.snapshot.findUnique({ where: { id: snapshotId }, select: { resourceId: true } });
+  const snap = await prisma.snapshot.findUnique({
+    where: { id: snapshotId },
+    include: { destination: true, resource: true },
+  });
+  if (snap) {
+    try {
+      await enqueuePrune({
+        instanceId: snap.resource.instanceId,
+        destination: snap.destination,
+        dirs: [snap.destinationDir],
+      });
+    } catch (e) {
+      console.warn("[delete] file prune enqueue failed", (e as Error).message);
+    }
+  }
   await prisma.snapshot.delete({ where: { id: snapshotId } });
   revalidatePath("/snapshots");
   revalidatePath("/destinations");

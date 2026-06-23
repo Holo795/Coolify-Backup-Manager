@@ -1,6 +1,7 @@
 import {
   type BackupJob,
   type RestoreJob,
+  type PruneJob,
   type ResolvedDestination,
   type EncryptionSpec,
   type SnapshotManifest,
@@ -30,7 +31,7 @@ export function resolveEncryption(dest: Destination): EncryptionSpec {
 }
 
 /** Pick an agent to run jobs for a given Coolify instance. */
-async function pickAgent(instanceId: string) {
+async function pickAgent(instanceId: string | null) {
   const forInstance = await prisma.agent.findFirst({
     where: { instanceId, status: "online" },
     orderBy: { lastSeenAt: "desc" },
@@ -197,4 +198,32 @@ export async function enqueueRestore(snapshotId: string, target: "in_place" | "n
   await prisma.agentJob.update({ where: { id: agentJob.id }, data: { payload: job as unknown as object } });
 
   return { restoreId: restore.id, agentId: agent.id, jobId: agentJob.id };
+}
+
+/**
+ * Queue an agent job to delete backup directories from a destination. The agent
+ * is the one with access to the files (local lives on its host; ssh/s3 are
+ * reachable from it). Returns null when no live agent can run it.
+ */
+export async function enqueuePrune(opts: {
+  instanceId: string | null;
+  destination: Destination;
+  dirs: string[];
+}): Promise<{ jobId: string; agentId: string } | null> {
+  const dirs = opts.dirs.filter(Boolean);
+  if (dirs.length === 0) return null;
+  const agent = await pickAgent(opts.instanceId);
+  if (!agent) return null;
+
+  const agentJob = await prisma.agentJob.create({
+    data: { agentId: agent.id, type: "prune", status: "queued", payload: {} },
+  });
+  const job: PruneJob = {
+    id: agentJob.id,
+    type: "prune",
+    destination: resolveDestination(opts.destination),
+    dirs,
+  };
+  await prisma.agentJob.update({ where: { id: agentJob.id }, data: { payload: job as unknown as object } });
+  return { jobId: agentJob.id, agentId: agent.id };
 }

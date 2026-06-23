@@ -102,8 +102,8 @@ export default async function SnapshotsPage() {
                           title="Delete this snapshot?"
                           body={
                             <>
-                              Permanently removes this <b>{s.resource.name}</b> snapshot ({formatBytes(s.sizeBytes)}) and its
-                              records. Files already written to the destination are not deleted.
+                              Permanently removes this <b>{s.resource.name}</b> snapshot ({formatBytes(s.sizeBytes)}),
+                              including <b>its files on the destination</b> (deleted by the agent).
                             </>
                           }
                         />

@@ -205,8 +205,8 @@ export default async function ResourceDetail({ params }: { params: Promise<{ id:
                           title="Delete this snapshot?"
                           body={
                             <>
-                              Permanently removes this snapshot ({formatBytes(s.sizeBytes)}) and its records. Files on the
-                              destination are not deleted.
+                              Permanently removes this snapshot ({formatBytes(s.sizeBytes)}), including{" "}
+                              <b>its files on the destination</b> (deleted by the agent).
                             </>
                           }
                         />

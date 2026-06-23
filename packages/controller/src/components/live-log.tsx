@@ -67,7 +67,7 @@ export function LiveLog({
         )}
         <span>· {events.length} events</span>
       </div>
-      <div ref={boxRef} className="max-h-80 overflow-auto rounded-md bg-muted/40 p-3 font-mono text-xs">
+      <div ref={boxRef} className="max-h-80 overflow-auto whitespace-nowrap rounded-md bg-muted/40 p-3 font-mono text-xs">
         {events.length === 0 ? (
           <span className="text-muted-foreground">Waiting for the agent…</span>
         ) : (

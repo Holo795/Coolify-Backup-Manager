@@ -79,8 +79,8 @@ export default async function SnapshotDetail({ params }: { params: Promise<{ id:
               redirectTo="/snapshots"
               body={
                 <>
-                  Permanently removes this snapshot ({formatBytes(snapshot.sizeBytes)}) and its records. Files already
-                  written to the destination are not deleted.
+                  Permanently removes this snapshot ({formatBytes(snapshot.sizeBytes)}), including{" "}
+                  <b>its files on the destination</b> (deleted by the agent).
                 </>
               }
             />
@@ -109,9 +109,11 @@ export default async function SnapshotDetail({ params }: { params: Promise<{ id:
           </CardHeader>
           <CardContent className="flex flex-col gap-1.5 text-sm">
             {snapshot.artifacts.map((a) => (
-              <div key={a.id} className="flex items-center justify-between gap-2">
-                <span className="font-mono text-xs">{a.filename}</span>
-                <span className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div key={a.id} className="flex items-center justify-between gap-2 min-w-0">
+                <div className="min-w-0 overflow-x-auto whitespace-nowrap">
+                  <span className="font-mono text-xs">{a.filename}</span>
+                </div>
+                <span className="shrink-0 flex items-center gap-2 text-xs text-muted-foreground">
                   {a.encrypted && <Badge tone="success">enc</Badge>}
                   {formatBytes(a.sizeBytes)}
                 </span>
@@ -158,9 +160,11 @@ export default async function SnapshotDetail({ params }: { params: Promise<{ id:
 
 function Row({ k, v }: { k: string; v: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b py-1.5 last:border-0">
-      <span className="text-muted-foreground">{k}</span>
-      <span>{v}</span>
+    <div className="flex items-center justify-between gap-4 border-b py-1.5 last:border-0 min-w-0">
+      <span className="shrink-0 text-muted-foreground">{k}</span>
+      <div className="min-w-0 overflow-x-auto whitespace-nowrap text-right">
+        {v}
+      </div>
     </div>
   );
 }
