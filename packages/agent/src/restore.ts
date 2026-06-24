@@ -41,14 +41,10 @@ export async function runRestore(job: RestoreJob, workDir: string, emit: Emit): 
     // (resolved from its uuid on the live host), else the original. The clone
     // keeps the same DB name + credentials, so the dump loads as-is, and the
     // original is never touched in new mode.
-    const into = job.target === "new_resource" && job.targetResource ? job.targetResource : manifest.resource;
-
-    if (job.target === "new_resource") {
-      if (!job.targetResource) throw new Error("Restore → new resource: the controller provided no cloned target");
-      if (volumes.length > 0) {
-        // No volume remapping yet — refuse rather than risk the original.
-        throw new Error("Restore → new resource isn't available yet for resources with volumes (compose/apps next).");
-      }
+    const isNew = job.target === "new_resource";
+    const into = isNew && job.targetResource ? job.targetResource : manifest.resource;
+    if (isNew && !job.targetResource) {
+      throw new Error("Restore → new resource: the controller provided no cloned target");
     }
 
     // Restore DB dumps into the target container (logical restore, no downtime).
@@ -67,8 +63,23 @@ export async function runRestore(job: RestoreJob, workDir: string, emit: Emit): 
       }
     }
 
-    // Restore volumes (requires the resource to be stopped for consistency).
-    if (volumes.length > 0) {
+    // Restore volumes.
+    if (volumes.length > 0 && isNew) {
+      // → new: the clone isn't deployed, so just pre-fill its (uuid-swapped)
+      // volumes. Never touch the original resource's containers/volumes. The
+      // data is mounted when the operator first deploys the clone.
+      for (const v of volumes) {
+        const src = v.meta.volume;
+        const dest = src ? job.volumeMap?.[src] : undefined;
+        if (!dest) {
+          emit("warn", `No clone volume mapping for "${src ?? v.filename}" — skipping (restore it manually after deploy)`);
+          continue;
+        }
+        emit("info", `Restoring volume ${src} → ${dest}`, 70);
+        await restoreVolume(dest, localFiles[v.filename]);
+      }
+    } else if (volumes.length > 0) {
+      // in place: stop the resource, overwrite its volumes, restart.
       const containers = manifest.resource.containerNames.length
         ? manifest.resource.containerNames
         : manifest.resource.containerName
@@ -98,6 +109,16 @@ export async function runRestore(job: RestoreJob, workDir: string, emit: Emit): 
           await startContainer(c).catch((e) => emit("error", `Failed to restart ${c}: ${(e as Error).message}`));
         }
       }
+    }
+
+    // For a freshly-cloned app/service, remind the operator of the manual steps
+    // we intentionally skip (no deploy, no domain).
+    if (isNew && (into.type === "application" || into.type === "service")) {
+      emit(
+        "warn",
+        `New ${into.type} "${into.name}" created but NOT deployed. In Coolify: set its environment variables and a ` +
+          `domain/URL, then deploy. Restored volume data will be mounted on first deploy.`,
+      );
     }
 
     if (manifest.provenance.gitCommitSha || manifest.provenance.imageDigest) {

@@ -12,11 +12,12 @@ import {
 import { prisma } from "./prisma";
 import { decryptSecret } from "./crypto";
 import { effectivePolicy } from "./schedule";
-import { CoolifyClient, type DbEngine } from "./coolify";
+import { CoolifyClient, type DbEngine, type CloneEngine } from "./coolify";
 import { syncInstance } from "./discovery";
 import type { Destination } from "@/generated/prisma/client";
 
 const DUMP_ENGINES: DbEngine[] = ["postgresql", "mysql", "mariadb", "mongodb"];
+const VOLUME_DB_ENGINES = ["redis", "keydb", "dragonfly", "clickhouse"];
 
 /** Decrypt a destination's stored config into a ResolvedDestination. */
 export function resolveDestination(dest: Destination): ResolvedDestination {
@@ -125,40 +126,107 @@ export async function enqueueBackup(resourceId: string, policyId?: string, runId
 /**
  * Clone a resource into a brand-new Coolify resource (same project/env/server,
  * new name) for a "restore → new" so the original is never touched. Returns the
- * descriptor the agent will resolve + restore into. DB engines only for now.
+ * descriptor the agent will resolve + restore into.
+ *
+ *  - dump DBs (pg/mysql/maria/mongo) with a logical dump  -> created + deployed,
+ *    the agent loads the dump into the running clone.
+ *  - everything else (volume-based DBs, redis/keydb/..., apps, services)        ->
+ *    created but NOT deployed; the agent pre-fills the remapped volumes so the
+ *    data is present on the operator's first deploy. Apps pin the captured
+ *    commit / image tag so the code matches the data.
  */
 async function cloneForRestore(
   resource: { coolifyUuid: string; name: string; type: string; projectName: string; environment: string; instanceId: string },
+  manifest: SnapshotManifest,
 ): Promise<ResourceDescriptor> {
   const instance = await prisma.coolifyInstance.findUniqueOrThrow({ where: { id: resource.instanceId } });
   const client = new CoolifyClient(instance.baseUrl, decryptSecret(instance.apiTokenEnc));
   const short = resource.coolifyUuid.slice(0, 4) + Date.now().toString(36).slice(-4);
   const newName = `${resource.name}-restored-${short}`.slice(0, 48);
+  const projectName = resource.projectName;
+  const environmentName = resource.environment || "production";
+  const type = resource.type as ResourceType;
+  const descriptor = (newUuid: string): ResourceDescriptor => ({
+    coolifyUuid: newUuid,
+    name: newName,
+    type,
+    containerNames: [],
+    volumes: [],
+  });
 
+  let newUuid: string;
   if (DUMP_ENGINES.includes(resource.type as DbEngine)) {
-    const newUuid = await client.cloneDatabase({
+    // Deploy only when there's a logical dump to load into a running container.
+    const hasDump = (manifest.artifacts ?? []).some((a) => a.kind === "db-dump");
+    newUuid = await client.cloneDatabase({
       sourceUuid: resource.coolifyUuid,
-      type: resource.type as DbEngine,
+      type: resource.type as CloneEngine,
       newName,
-      projectName: resource.projectName,
-      environmentName: resource.environment || "production",
+      projectName,
+      environmentName,
+      instantDeploy: hasDump,
     });
-    await client.waitDatabaseRunning(newUuid);
-    // Surface the new resource in the controller UI.
-    await syncInstance(instance.id).catch(() => undefined);
-    return {
-      coolifyUuid: newUuid,
-      name: newName,
-      type: resource.type as ResourceType,
-      containerNames: [],
-      volumes: [],
-    };
+    if (hasDump) await client.waitDatabaseRunning(newUuid);
+  } else if (VOLUME_DB_ENGINES.includes(resource.type)) {
+    // redis/keydb/dragonfly/clickhouse: volume-based, restore into the (not yet
+    // deployed) clone's volumes.
+    newUuid = await client.cloneDatabase({
+      sourceUuid: resource.coolifyUuid,
+      type: resource.type as CloneEngine,
+      newName,
+      projectName,
+      environmentName,
+      instantDeploy: false,
+    });
+  } else if (type === "application") {
+    const sha = manifest.provenance?.gitCommitSha;
+    newUuid = await client.cloneApplication({
+      sourceUuid: resource.coolifyUuid,
+      newName,
+      projectName,
+      environmentName,
+      gitCommitSha: sha && sha !== "HEAD" ? sha : undefined,
+      imageRef: manifest.provenance?.imageRef,
+    });
+    await client.copyEnvVars("applications", resource.coolifyUuid, newUuid).catch(() => 0);
+  } else if (type === "service") {
+    newUuid = await client.cloneService({
+      sourceUuid: resource.coolifyUuid,
+      newName,
+      projectName,
+      environmentName,
+    });
+    await client.copyEnvVars("services", resource.coolifyUuid, newUuid).catch(() => 0);
+  } else {
+    throw new Error(`Restore → new resource is not supported for type "${resource.type}"`);
   }
 
-  throw new Error(
-    `Restore → new resource for "${resource.type}" is not available yet (databases work today; ` +
-      `compose/services and apps are coming next).`,
-  );
+  // Surface the new resource in the controller UI.
+  await syncInstance(instance.id).catch(() => undefined);
+  return descriptor(newUuid);
+}
+
+/**
+ * Map each captured volume name to the clone's volume name. Coolify derives
+ * volume names from the resource uuid, so swapping the (dash-stripped) old uuid
+ * for the new one yields the name the clone will mount on first deploy. Volumes
+ * that don't carry the uuid are left unmapped (and the agent skips them).
+ */
+function buildVolumeMap(
+  manifest: SnapshotManifest,
+  oldUuid: string,
+  newUuid: string,
+): Record<string, string> | undefined {
+  const o = oldUuid.replace(/-/g, "");
+  const n = newUuid.replace(/-/g, "");
+  const map: Record<string, string> = {};
+  for (const a of manifest.artifacts ?? []) {
+    if (a.kind !== "volume") continue;
+    const v = a.meta?.volume;
+    if (!v || !v.includes(o)) continue;
+    map[v] = v.split(o).join(n);
+  }
+  return Object.keys(map).length ? map : undefined;
 }
 
 /** Authoritative dump/restore DB credentials from the Coolify API (the
@@ -189,9 +257,16 @@ export async function enqueueRestore(snapshotId: string, target: "in_place" | "n
   if (!agent) throw new Error("No agent available to run the restore");
 
   const enc = resolveEncryption(snapshot.destination);
+  const manifest = snapshot.manifest as unknown as SnapshotManifest;
 
-  // "→ new": clone into a fresh Coolify resource and restore into it.
-  const targetResource = target === "new_resource" ? await cloneForRestore(snapshot.resource) : undefined;
+  // "→ new": clone into a fresh Coolify resource and restore into it. The
+  // volume map tells the agent which (uuid-swapped) volumes to fill.
+  let targetResource: ResourceDescriptor | undefined;
+  let volumeMap: Record<string, string> | undefined;
+  if (target === "new_resource") {
+    targetResource = await cloneForRestore(snapshot.resource, manifest);
+    volumeMap = buildVolumeMap(manifest, snapshot.resource.coolifyUuid, targetResource.coolifyUuid);
+  }
 
   const restore = await prisma.restoreJob.create({
     data: { snapshotId: snapshot.id, target, status: "running" },
@@ -210,11 +285,12 @@ export async function enqueueRestore(snapshotId: string, target: "in_place" | "n
   const job: RestoreJob = {
     id: agentJob.id,
     type: "restore",
-    manifest: snapshot.manifest as unknown as SnapshotManifest,
+    manifest,
     source: resolveDestination(snapshot.destination),
     decryptionKey: enc.enabled ? enc.key : undefined,
     target,
     targetResource,
+    volumeMap,
     // Same DB keeps its name/creds in the clone, so the original's creds work.
     db: await dbCredsFor(snapshot.resource),
   };

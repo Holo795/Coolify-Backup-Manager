@@ -160,6 +160,13 @@ export const RestoreJob = z.object({
    * the snapshot's original resource. The original is never touched.
    */
   targetResource: ResourceDescriptor.optional(),
+  /**
+   * For target=new_resource with volumes: maps each original docker volume name
+   * to the clone's volume name (derived by swapping the resource uuid). The
+   * agent pre-creates + fills the target volume so data is present on first
+   * deploy. Volumes with no mapping are skipped (the original is never touched).
+   */
+  volumeMap: z.record(z.string(), z.string()).optional(),
 });
 export type RestoreJob = z.infer<typeof RestoreJob>;
 

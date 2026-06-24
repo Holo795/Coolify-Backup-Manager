@@ -27,8 +27,11 @@ export interface DbConfig {
   [k: string]: unknown;
 }
 
+/** All standalone-database engines Coolify can create via the API. */
+export type CloneEngine = DbEngine | "redis" | "keydb" | "dragonfly" | "clickhouse";
+
 /** Map an original DB config to the per-engine credential fields for create. */
-function dbCredsBody(type: DbEngine, src: DbConfig): Record<string, unknown> {
+function dbCredsBody(type: CloneEngine, src: DbConfig): Record<string, unknown> {
   switch (type) {
     case "postgresql":
       return { postgres_user: src.postgres_user, postgres_password: src.postgres_password, postgres_db: src.postgres_db };
@@ -52,7 +55,38 @@ function dbCredsBody(type: DbEngine, src: DbConfig): Record<string, unknown> {
         mongo_initdb_root_password: src.mongo_initdb_root_password,
         mongo_initdb_database: src.mongo_initdb_database,
       };
+    case "redis":
+      return { redis_password: src.redis_password, redis_conf: src.redis_conf };
+    case "keydb":
+      return { keydb_password: src.keydb_password, keydb_conf: src.keydb_conf };
+    case "dragonfly":
+      return { dragonfly_password: src.dragonfly_password };
+    case "clickhouse":
+      return {
+        clickhouse_admin_user: src.clickhouse_admin_user,
+        clickhouse_admin_password: src.clickhouse_admin_password,
+      };
   }
+}
+
+/** Drop undefined/null keys so Coolify create endpoints get a clean body. */
+function compact<T extends Record<string, unknown>>(o: T): T {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== null)) as T;
+}
+
+/**
+ * Split an image reference into name + tag. Handles registries with ports
+ * ("reg:5000/org/name:tag") and digest refs ("org/name@sha256:..."), where the
+ * tag is dropped in favour of the digest's source tag if any.
+ */
+export function parseImageRef(ref?: string): { name?: string; tag?: string } {
+  if (!ref) return {};
+  const at = ref.indexOf("@");
+  const core = at >= 0 ? ref.slice(0, at) : ref; // ignore "@sha256:..." digest
+  const slash = core.lastIndexOf("/");
+  const colon = core.lastIndexOf(":");
+  if (colon > slash) return { name: core.slice(0, colon), tag: core.slice(colon + 1) };
+  return { name: core };
 }
 
 export class CoolifyClient {
@@ -150,15 +184,18 @@ export class CoolifyClient {
 
   /**
    * Clone a standalone database into a NEW Coolify resource: same project /
-   * environment / server, same image + credentials, new name, deployed so it
-   * can immediately receive a logical restore. Returns the new resource uuid.
+   * environment / server, same image + credentials, new name. `instantDeploy`
+   * is true for logical-dump restores (the clone must be running to load the
+   * dump) and false for volume-based restores (we pre-fill the volume, then the
+   * operator deploys). Returns the new resource uuid.
    */
   async cloneDatabase(opts: {
     sourceUuid: string;
-    type: DbEngine;
+    type: CloneEngine;
     newName: string;
     projectName: string;
     environmentName: string;
+    instantDeploy: boolean;
   }): Promise<string> {
     const src = await this.getDatabase(opts.sourceUuid);
     const serverUuid = src?.destination?.server?.uuid;
@@ -166,18 +203,154 @@ export class CoolifyClient {
     const projectUuid = await this.findProjectUuid(opts.projectName);
     if (!projectUuid) throw new Error(`Coolify project "${opts.projectName}" not found for cloning`);
 
-    const body = {
+    const body = compact({
       server_uuid: serverUuid,
       project_uuid: projectUuid,
       environment_name: opts.environmentName,
       name: opts.newName,
       image: src.image,
-      instant_deploy: true,
+      instant_deploy: opts.instantDeploy,
       ...dbCredsBody(opts.type, src),
-    };
+    });
     const created = await this.post<{ uuid?: string }>(`/api/v1/databases/${opts.type}`, body);
     if (!created?.uuid) throw new Error("Coolify did not return a uuid for the cloned database");
     return created.uuid;
+  }
+
+  /** Raw config of an application / service resource. */
+  async getApplication(uuid: string): Promise<Record<string, any>> {
+    return this.get<Record<string, any>>(`/api/v1/applications/${uuid}`);
+  }
+  async getService(uuid: string): Promise<Record<string, any>> {
+    return this.get<Record<string, any>>(`/api/v1/services/${uuid}`);
+  }
+
+  /**
+   * Clone an application into a NEW Coolify resource (same project / env /
+   * server, new name). NOT deployed and NO domain on purpose — the operator
+   * wires env + URL then deploys.
+   *
+   * The code is pinned to match the restored data:
+   *  - git apps  -> git_commit_sha pinned to the snapshot's captured commit
+   *  - image apps -> the exact image name:tag captured at backup time
+   * Returns the new resource uuid.
+   */
+  async cloneApplication(opts: {
+    sourceUuid: string;
+    newName: string;
+    projectName: string;
+    environmentName: string;
+    gitCommitSha?: string;
+    /** Captured image reference (e.g. "org/name:v1.2.3") for docker-image apps. */
+    imageRef?: string;
+  }): Promise<string> {
+    const src = await this.getApplication(opts.sourceUuid);
+    const serverUuid = src?.destination?.server?.uuid;
+    if (!serverUuid) throw new Error("Could not resolve the source application's server for cloning");
+    const projectUuid = await this.findProjectUuid(opts.projectName);
+    if (!projectUuid) throw new Error(`Coolify project "${opts.projectName}" not found for cloning`);
+
+    const base = {
+      project_uuid: projectUuid,
+      server_uuid: serverUuid,
+      environment_name: opts.environmentName,
+      name: opts.newName,
+      ports_exposes: src.ports_exposes || "3000",
+      instant_deploy: false,
+    };
+
+    // Docker-image app: pin the captured tag so the clone runs the exact image
+    // the data was backed up against (not a moving tag like :latest).
+    const isImageApp =
+      src.build_pack === "dockerimage" || (!src.git_repository && !!src.docker_registry_image_name);
+    if (isImageApp) {
+      const pinned = parseImageRef(opts.imageRef);
+      const body = compact({
+        ...base,
+        docker_registry_image_name: pinned.name || src.docker_registry_image_name,
+        docker_registry_image_tag: pinned.tag || src.docker_registry_image_tag || "latest",
+      });
+      const created = await this.post<{ uuid?: string }>(`/api/v1/applications/dockerimage`, body);
+      if (!created?.uuid) throw new Error("Coolify did not return a uuid for the cloned image application");
+      return created.uuid;
+    }
+
+    if (!src.git_repository) {
+      throw new Error(`Application "${src.name}" can't be "→ new" cloned (no git repo and no docker image)`);
+    }
+    const body = compact({
+      ...base,
+      git_repository: src.git_repository,
+      git_branch: src.git_branch,
+      git_commit_sha: opts.gitCommitSha || src.git_commit_sha || "HEAD",
+      build_pack: src.build_pack,
+      base_directory: src.base_directory,
+      publish_directory: src.publish_directory,
+      install_command: src.install_command,
+      build_command: src.build_command,
+      start_command: src.start_command,
+      dockerfile_location: src.dockerfile_location,
+      docker_compose_location: src.docker_compose_location,
+      static_image: src.static_image,
+    });
+    const created = await this.post<{ uuid?: string }>(`/api/v1/applications/public`, body);
+    if (!created?.uuid) throw new Error("Coolify did not return a uuid for the cloned application");
+    return created.uuid;
+  }
+
+  /**
+   * Clone a service into a NEW Coolify resource using its compose (or one-click
+   * type). NOT deployed and NO domain — the operator wires env + URL then
+   * deploys. Returns the new resource uuid.
+   */
+  async cloneService(opts: {
+    sourceUuid: string;
+    newName: string;
+    projectName: string;
+    environmentName: string;
+  }): Promise<string> {
+    const src = await this.getService(opts.sourceUuid);
+    const serverUuid = src?.server?.uuid ?? src?.destination?.server?.uuid;
+    if (!serverUuid) throw new Error("Could not resolve the source service's server for cloning");
+    const projectUuid = await this.findProjectUuid(opts.projectName);
+    if (!projectUuid) throw new Error(`Coolify project "${opts.projectName}" not found for cloning`);
+
+    const compose = src.docker_compose_raw ?? src.docker_compose ?? src.docker_compose_yaml;
+    const base = {
+      project_uuid: projectUuid,
+      server_uuid: serverUuid,
+      environment_name: opts.environmentName,
+      name: opts.newName,
+      instant_deploy: false,
+    };
+    let body: Record<string, unknown>;
+    if (compose) body = { ...base, docker_compose_raw: compose };
+    else if (src.service_type) body = { ...base, type: src.service_type };
+    else throw new Error(`Service "${src.name}" can't be cloned automatically (no compose exposed by the API)`);
+
+    const created = await this.post<{ uuid?: string }>(`/api/v1/services`, compact(body));
+    if (!created?.uuid) throw new Error("Coolify did not return a uuid for the cloned service");
+    return created.uuid;
+  }
+
+  /** Best-effort copy of environment variables from one app/service to another. */
+  async copyEnvVars(kind: "applications" | "services", srcUuid: string, destUuid: string): Promise<number> {
+    const envs = await this.get<any[]>(`/api/v1/${kind}/${srcUuid}/envs`).catch(() => []);
+    let n = 0;
+    for (const e of envs ?? []) {
+      if (!e?.key) continue;
+      const ok = await this.post(`/api/v1/${kind}/${destUuid}/envs`, {
+        key: e.key,
+        value: e.value ?? "",
+        is_preview: false,
+        is_build_time: !!e.is_build_time,
+        is_literal: !!e.is_literal,
+      })
+        .then(() => true)
+        .catch(() => false);
+      if (ok) n++;
+    }
+    return n;
   }
 
   /** Poll a database resource until its container reports running (or timeout). */
