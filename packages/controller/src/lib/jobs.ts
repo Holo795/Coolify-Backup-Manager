@@ -45,7 +45,7 @@ async function pickAgent(instanceId: string | null) {
 }
 
 /** Create a Snapshot + queued AgentJob for a backup. */
-export async function enqueueBackup(resourceId: string, policyId?: string) {
+export async function enqueueBackup(resourceId: string, policyId?: string, runId?: string) {
   const resource = await prisma.resource.findUniqueOrThrow({ where: { id: resourceId } });
   let policy = policyId
     ? await prisma.backupPolicy.findUniqueOrThrow({ where: { id: policyId }, include: { destination: true } })
@@ -71,14 +71,7 @@ export async function enqueueBackup(resourceId: string, policyId?: string) {
 
   // For real Coolify databases, read the dump credentials from the Coolify API
   // (authoritative) rather than relying on the container's env at backup time.
-  let db: { user?: string; password?: string; database?: string } | undefined;
-  if (DUMP_ENGINES.includes(resource.type as DbEngine) && !resource.coolifyUuid.startsWith("coolify-self")) {
-    const instance = await prisma.coolifyInstance.findUnique({ where: { id: resource.instanceId } });
-    if (instance) {
-      const client = new CoolifyClient(instance.baseUrl, decryptSecret(instance.apiTokenEnc));
-      db = await client.getDbCredentials(resource.coolifyUuid, resource.type as DbEngine).catch(() => undefined);
-    }
-  }
+  const db = await dbCredsFor(resource);
 
   const snapshot = await prisma.snapshot.create({
     data: {
@@ -89,6 +82,7 @@ export async function enqueueBackup(resourceId: string, policyId?: string) {
       captureMode,
       status: "running",
       destinationDir: dir,
+      runId,
     },
   });
 
@@ -167,6 +161,22 @@ async function cloneForRestore(
   );
 }
 
+/** Authoritative dump/restore DB credentials from the Coolify API (the
+ * container env isn't always reliable). undefined for non-DB / coolify-self. */
+async function dbCredsFor(resource: {
+  type: string;
+  coolifyUuid: string;
+  instanceId: string;
+}): Promise<{ user?: string; password?: string; database?: string } | undefined> {
+  if (!DUMP_ENGINES.includes(resource.type as DbEngine) || resource.coolifyUuid.startsWith("coolify-self")) {
+    return undefined;
+  }
+  const instance = await prisma.coolifyInstance.findUnique({ where: { id: resource.instanceId } });
+  if (!instance) return undefined;
+  const client = new CoolifyClient(instance.baseUrl, decryptSecret(instance.apiTokenEnc));
+  return client.getDbCredentials(resource.coolifyUuid, resource.type as DbEngine).catch(() => undefined);
+}
+
 /** Create a RestoreJob + queued AgentJob from an existing snapshot. */
 export async function enqueueRestore(snapshotId: string, target: "in_place" | "new_resource" = "in_place") {
   const snapshot = await prisma.snapshot.findUniqueOrThrow({
@@ -205,6 +215,8 @@ export async function enqueueRestore(snapshotId: string, target: "in_place" | "n
     decryptionKey: enc.enabled ? enc.key : undefined,
     target,
     targetResource,
+    // Same DB keeps its name/creds in the clone, so the original's creds work.
+    db: await dbCredsFor(snapshot.resource),
   };
 
   await prisma.agentJob.update({ where: { id: agentJob.id }, data: { payload: job as unknown as object } });

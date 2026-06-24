@@ -58,7 +58,9 @@ export async function runRestore(job: RestoreJob, workDir: string, emit: Emit): 
       const resolved = await resolveResource(into);
       const container = resolved.containerName ?? into.containerName ?? job.targetContainerName;
       if (!container) throw new Error(`DB restore requires a target container (resolving ${into.name})`);
-      const creds = resolved.db ?? job.db ?? {};
+      // Prefer the controller-provided creds (authoritative, from the Coolify
+      // API) over whatever was read from the container env.
+      const creds = job.db ?? resolved.db ?? {};
       for (const d of dumps) {
         emit("info", `Restoring dump ${d.filename} into ${into.name} (${container})`, 50);
         await restoreDatabase(into.type, container, creds, localFiles[d.filename]);

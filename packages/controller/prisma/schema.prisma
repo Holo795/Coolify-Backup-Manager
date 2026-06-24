@@ -176,10 +176,13 @@ model Snapshot {
   manifest      Json?
   sizeBytes     BigInt       @default(0)
   error         String?
+  runId         String?      // groups snapshots from one scheduled run
   startedAt     DateTime     @default(now())
   finishedAt    DateTime?
   artifacts     Artifact[]
   restoreJobs   RestoreJob[]
+
+  @@index([runId])
 }
 
 model Artifact {

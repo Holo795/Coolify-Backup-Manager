@@ -25,6 +25,35 @@ export default async function InstancesPage() {
     prisma.destination.findMany({ orderBy: { name: "asc" } }),
   ]);
 
+  // Last scheduled run per instance schedule: the most recent runId + its tally.
+  const policyIds = instances.map((i) => i.policies[0]?.id).filter((x): x is string => !!x);
+  const latestRuns = policyIds.length
+    ? await prisma.snapshot.findMany({
+        where: { policyId: { in: policyIds }, runId: { not: null } },
+        orderBy: { startedAt: "desc" },
+        distinct: ["policyId"],
+        select: { policyId: true, runId: true, startedAt: true },
+      })
+    : [];
+  const runByPolicy = new Map<string, { at: Date; ok: number; failed: number; running: number; total: number }>();
+  await Promise.all(
+    latestRuns.map(async (run) => {
+      if (!run.runId || !run.policyId) return;
+      const groups = await prisma.snapshot.groupBy({ by: ["status"], where: { runId: run.runId }, _count: true });
+      let ok = 0;
+      let failed = 0;
+      let running = 0;
+      let total = 0;
+      for (const g of groups) {
+        total += g._count;
+        if (g.status === "succeeded") ok = g._count;
+        else if (g.status === "failed") failed = g._count;
+        else if (g.status === "running") running = g._count;
+      }
+      runByPolicy.set(run.policyId, { at: run.startedAt, ok, failed, running, total });
+    }),
+  );
+
   return (
     <>
       <PageHeader title="Coolify instances" description="Connect each Coolify control plane via its API token" />
@@ -45,6 +74,7 @@ export default async function InstancesPage() {
                 (a) => a.status === "online" && a.lastSeenAt && Date.now() - new Date(a.lastSeenAt).getTime() < 90_000,
               ).length;
               const staleAgents = i.agents.length - liveAgents;
+              const lastRun = i.policies[0] ? runByPolicy.get(i.policies[0].id) : undefined;
               return (
               <Card key={i.id}>
                 <CardContent className="flex flex-col gap-4 p-5">
@@ -113,6 +143,17 @@ export default async function InstancesPage() {
                         </form>
                       )}
                     </div>
+                    {lastRun && (
+                      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span>Last run {timeAgo(lastRun.at)}:</span>
+                        <span className="text-[var(--color-success)]">✓ {lastRun.ok}</span>
+                        {lastRun.failed > 0 && <span className="text-[var(--color-danger)]">✗ {lastRun.failed}</span>}
+                        {lastRun.running > 0 && <span className="text-[var(--color-accent)]">⏳ {lastRun.running} running</span>}
+                        <span>
+                          · {lastRun.total} resource{lastRun.total === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                    )}
                     <details className="text-xs">
                       <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
                         {i.policies[0] ? "Edit schedule" : "Set a backup schedule for this instance"}

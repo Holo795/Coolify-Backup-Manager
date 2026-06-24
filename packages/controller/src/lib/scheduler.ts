@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { prisma } from "./prisma";
 import { cronMatches } from "./cron";
 import { enqueueBackup } from "./jobs";
@@ -37,9 +38,10 @@ export async function tick(now = new Date()): Promise<number> {
       resources = await prisma.resource.findMany({ where: { backupEnabled: true, excluded: false } });
     }
 
+    const runId = randomUUID();
     for (const r of resources) {
       try {
-        await enqueueBackup(r.id, p.id);
+        await enqueueBackup(r.id, p.id, runId);
         triggered++;
       } catch (e) {
         console.error(`[scheduler] enqueue failed for ${r.name}:`, (e as Error).message);
