@@ -9,10 +9,13 @@ export function LiveLog({
   id,
   kind = "snapshot",
   initialStatus,
+  timeZone,
 }: {
   id: string;
   kind?: "snapshot" | "restore";
   initialStatus: string;
+  /** IANA timezone for rendering event times (falls back to the browser's). */
+  timeZone?: string;
 }) {
   const [events, setEvents] = useState<Event[]>([]);
   const [status, setStatus] = useState(initialStatus);
@@ -83,7 +86,9 @@ export function LiveLog({
         ) : (
           events.map((e, i) => (
             <div key={i} className="flex gap-2">
-              <span className="text-muted-foreground">{new Date(e.ts).toISOString().slice(11, 19)}</span>
+              <span className="text-muted-foreground">
+                {new Date(e.ts).toLocaleTimeString("fr-FR", { timeZone, hour12: false })}
+              </span>
               <span
                 className={
                   e.level === "error"

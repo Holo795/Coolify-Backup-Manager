@@ -8,6 +8,7 @@ import { ConfirmDeleteButton } from "@/components/confirm-delete";
 import { RestoreActions } from "@/components/restore-actions";
 import { LiveLog } from "@/components/live-log";
 import { formatBytes } from "@/lib/cn";
+import { getTimezone } from "@/lib/settings";
 import { GitCommitHorizontal } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,7 @@ export default async function SnapshotDetail({ params }: { params: Promise<{ id:
     select: { id: true },
   });
   const agentDown = !liveAgent;
+  const tz = await getTimezone();
 
   const manifest = snapshot.manifest as { provenance?: { gitCommitSha?: string; imageDigest?: string } } | null;
 
@@ -116,7 +118,7 @@ export default async function SnapshotDetail({ params }: { params: Promise<{ id:
           <CardTitle>Backup log</CardTitle>
         </CardHeader>
         <CardContent>
-          <LiveLog id={snapshot.id} initialStatus={snapshot.status} />
+          <LiveLog id={snapshot.id} initialStatus={snapshot.status} timeZone={tz} />
         </CardContent>
       </Card>
 
@@ -135,7 +137,7 @@ export default async function SnapshotDetail({ params }: { params: Promise<{ id:
                   </span>
                   {r.error && <span className="text-xs text-[var(--color-danger)]">{r.error}</span>}
                 </div>
-                <LiveLog id={r.id} kind="restore" initialStatus={r.status} />
+                <LiveLog id={r.id} kind="restore" initialStatus={r.status} timeZone={tz} />
               </div>
             ))}
           </CardContent>

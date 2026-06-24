@@ -10,9 +10,23 @@ import { syncInstance } from "@/lib/discovery";
 import { enqueueBackup, enqueueRestore, enqueuePrune, resolveDestination } from "@/lib/jobs";
 import { isValidCron } from "@/lib/cron";
 import { freqToCron } from "@/lib/schedule";
+import { setTimezone, isValidTimezone } from "@/lib/settings";
 
 function s(fd: FormData, key: string): string {
   return (fd.get(key) ?? "").toString().trim();
+}
+
+/* ----------------------------- settings ----------------------------- */
+
+/** Set the app-wide IANA timezone used for schedules + timestamp display. */
+export async function updateTimezone(fd: FormData) {
+  await requireUser();
+  const tz = s(fd, "timezone");
+  if (!tz || !isValidTimezone(tz)) return { error: "Invalid timezone" };
+  await setTimezone(tz);
+  // Schedules + every page that shows times depend on this.
+  revalidatePath("/", "layout");
+  return { ok: true };
 }
 
 /* ----------------------------- instances ----------------------------- */

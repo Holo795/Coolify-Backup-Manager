@@ -5,6 +5,7 @@ import { enqueueBackup } from "./jobs";
 import { applyRetention } from "./retention";
 import { reaper } from "./reaper";
 import { syncInstance } from "./discovery";
+import { getTimezone } from "./settings";
 
 /** Re-discover every instance so statuses refresh and removed resources are
  * pruned/marked without a manual Sync. */
@@ -20,11 +21,12 @@ const globalForSched = globalThis as unknown as { cbmSchedulerStarted?: boolean 
 /** Evaluate all enabled policies and enqueue backups for those due now. */
 export async function tick(now = new Date()): Promise<number> {
   const policies = await prisma.backupPolicy.findMany({ where: { enabled: true } });
+  const tz = await getTimezone();
   let triggered = 0;
   for (const p of policies) {
     let due = false;
     try {
-      due = cronMatches(p.cron, now);
+      due = cronMatches(p.cron, now, tz);
     } catch {
       continue;
     }

@@ -234,3 +234,14 @@ model JobEvent {
   progress  Int?
   ts        DateTime @default(now())
 }
+
+// ---------------------------------------------------------------------------
+// App-wide settings (single row, id = "global")
+// ---------------------------------------------------------------------------
+
+model Setting {
+  id        String   @id @default("global")
+  // IANA timezone used for schedule evaluation + timestamp display.
+  timezone  String   @default("Europe/Paris")
+  updatedAt DateTime @updatedAt
+}

@@ -20,7 +20,42 @@ function parseField(field: string, min: number, max: number): Set<number> {
   return out;
 }
 
-export function cronMatches(expr: string, date: Date): boolean {
+/** Wall-clock parts of `date` as seen in the given IANA timezone. */
+function partsInZone(date: Date, timeZone: string): {
+  minute: number;
+  hour: number;
+  day: number;
+  month: number;
+  dow: number;
+} {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    minute: "2-digit",
+    hour: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+    weekday: "short",
+  });
+  const p: Record<string, string> = {};
+  for (const part of fmt.formatToParts(date)) p[part.type] = part.value;
+  const dows: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  // hour can be "24" at midnight in some locales; normalise to 0.
+  const hour = parseInt(p.hour, 10) % 24;
+  return {
+    minute: parseInt(p.minute, 10),
+    hour,
+    day: parseInt(p.day, 10),
+    month: parseInt(p.month, 10),
+    dow: dows[p.weekday] ?? 0,
+  };
+}
+
+/**
+ * Match a 5-field cron against `date`, evaluated in `timeZone` (IANA, e.g.
+ * "Europe/Paris"). Defaults to UTC when no zone is given.
+ */
+export function cronMatches(expr: string, date: Date, timeZone = "UTC"): boolean {
   const fields = expr.trim().split(/\s+/);
   if (fields.length !== 5) throw new Error(`Invalid cron expression: "${expr}"`);
   const [min, hour, dom, mon, dow] = fields;
@@ -30,16 +65,16 @@ export function cronMatches(expr: string, date: Date): boolean {
   const mons = parseField(mon, 1, 12);
   const dows = parseField(dow, 0, 6);
 
-  // Use UTC to match server_timezone defaults.
+  const now = partsInZone(date, timeZone);
   const matchDom = dom !== "*";
   const matchDow = dow !== "*";
-  const domOk = doms.has(date.getUTCDate());
-  const dowOk = dows.has(date.getUTCDay());
+  const domOk = doms.has(now.day);
+  const dowOk = dows.has(now.dow);
 
   return (
-    minutes.has(date.getUTCMinutes()) &&
-    hours.has(date.getUTCHours()) &&
-    mons.has(date.getUTCMonth() + 1) &&
+    minutes.has(now.minute) &&
+    hours.has(now.hour) &&
+    mons.has(now.month) &&
     // Standard cron: if both dom and dow are restricted, match either.
     (matchDom && matchDow ? domOk || dowOk : domOk && dowOk)
   );

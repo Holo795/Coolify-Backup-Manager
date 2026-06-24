@@ -1,4 +1,4 @@
-import { LayoutDashboard, Server, Boxes, HardDrive, Archive, Cpu, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Server, Boxes, HardDrive, Archive, Cpu, Settings, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -15,4 +15,5 @@ export const NAV: NavItem[] = [
   { href: "/destinations", label: "Destinations", icon: HardDrive },
   { href: "/snapshots", label: "Snapshots", icon: Archive },
   { href: "/agents", label: "Agents", icon: Cpu },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
