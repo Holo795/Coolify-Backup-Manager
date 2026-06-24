@@ -21,12 +21,22 @@ export async function captureProvenance(container: string): Promise<Provenance> 
   if (imageName) {
     const img = await inspectImage(imageName);
     if (img) {
+      // Prefer a pullable repo digest (name@sha256:…) over the local image id,
+      // so a "latest"/floating tag can be re-pinned to the exact deployed image.
       const digest: string | undefined = (img.RepoDigests ?? [])[0];
       prov.imageDigest = digest ?? img.Id;
       if (!prov.gitCommitSha) {
         prov.gitCommitSha = findCommit(img.Config?.Labels ?? {});
       }
     }
+  }
+
+  // Coolify tags images it builds from git with the resolved commit SHA
+  // (e.g. "<resource>_<name>:<40-hex>"). When no label carried the commit, use
+  // that tag so a git app can be re-pinned to the code that matches the data.
+  if (!prov.gitCommitSha && imageRef) {
+    const tag = imageRef.includes("@") ? undefined : imageRef.split(":").pop();
+    if (tag && /^[0-9a-f]{7,40}$/i.test(tag)) prov.gitCommitSha = tag;
   }
   return prov;
 }

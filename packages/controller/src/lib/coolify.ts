@@ -243,6 +243,8 @@ export class CoolifyClient {
     gitCommitSha?: string;
     /** Captured image reference (e.g. "org/name:v1.2.3") for docker-image apps. */
     imageRef?: string;
+    /** Captured pullable digest ("org/name@sha256:…") to pin a floating tag. */
+    imageDigest?: string;
   }): Promise<string> {
     const src = await this.getApplication(opts.sourceUuid);
     const serverUuid = src?.destination?.server?.uuid;
@@ -259,16 +261,26 @@ export class CoolifyClient {
       instant_deploy: false,
     };
 
-    // Docker-image app: pin the captured tag so the clone runs the exact image
-    // the data was backed up against (not a moving tag like :latest).
+    // Docker-image app: pin the captured tag — or, when the tag is floating
+    // (latest/…), the exact deployed digest — so the clone runs the same image
+    // the data was backed up against, never a tag that has since moved.
     const isImageApp =
       src.build_pack === "dockerimage" || (!src.git_repository && !!src.docker_registry_image_name);
     if (isImageApp) {
       const pinned = parseImageRef(opts.imageRef);
+      let imageName = pinned.name || (src.docker_registry_image_name as string | undefined);
+      const imageTag = pinned.tag || (src.docker_registry_image_tag as string | undefined) || "latest";
+      const floating = !pinned.tag || ["latest", "main", "master", "stable", "edge", "nightly"].includes(imageTag.toLowerCase());
+      // Coolify's tag field can't hold a digest (it splits on ":"), so pin the
+      // digest inside the image name ("repo/name@sha256:…") with the tag as a
+      // placeholder. A concrete tag is kept as-is.
+      if (floating && opts.imageDigest && opts.imageDigest.includes("@sha256:")) {
+        imageName = opts.imageDigest;
+      }
       const body = compact({
         ...base,
-        docker_registry_image_name: pinned.name || src.docker_registry_image_name,
-        docker_registry_image_tag: pinned.tag || src.docker_registry_image_tag || "latest",
+        docker_registry_image_name: imageName,
+        docker_registry_image_tag: imageTag,
       });
       const created = await this.post<{ uuid?: string }>(`/api/v1/applications/dockerimage`, body);
       if (!created?.uuid) throw new Error("Coolify did not return a uuid for the cloned image application");
@@ -278,9 +290,9 @@ export class CoolifyClient {
     if (!src.git_repository) {
       throw new Error(`Application "${src.name}" can't be "→ new" cloned (no git repo and no docker image)`);
     }
-    // The /applications/public endpoint validates the body against the build
-    // pack: build-pack-specific fields (dockerfile_location, etc.) are rejected
-    // ("This field is not allowed") unless they match. Send only what fits.
+    // The create endpoints validate the body against the build pack: build-pack-
+    // specific fields (dockerfile_location, etc.) are rejected ("This field is
+    // not allowed") unless they match. Send only what fits.
     const bp = (src.build_pack as string | undefined) ?? "nixpacks";
     const body: Record<string, unknown> = {
       ...base,
@@ -302,9 +314,47 @@ export class CoolifyClient {
     if (bp === "dockerfile") body.dockerfile_location = src.dockerfile_location;
     if (bp === "dockercompose") body.docker_compose_location = src.docker_compose_location;
 
-    const created = await this.post<{ uuid?: string }>(`/api/v1/applications/public`, compact(body));
-    if (!created?.uuid) throw new Error("Coolify did not return a uuid for the cloned application");
-    return created.uuid;
+    // Use the create endpoint that carries over the source's auth so private /
+    // self-hosted repos still resolve: a GitHub-App source, an SSH deploy key,
+    // or the public endpoint (for full-URL / inline-credential repos).
+    let endpoint = "/api/v1/applications/public";
+    if (src.source_id != null) {
+      const ghUuid = await this.resolveSourceUuid(src.source_id as number);
+      if (ghUuid) {
+        body.github_app_uuid = ghUuid;
+        endpoint = "/api/v1/applications/private-github-app";
+      }
+    } else if (src.private_key_id != null) {
+      const keyUuid = await this.resolvePrivateKeyUuid(src.private_key_id as number);
+      if (keyUuid) {
+        body.private_key_uuid = keyUuid;
+        endpoint = "/api/v1/applications/private-deploy-key";
+      }
+    }
+
+    const created = await this.post<{ uuid?: string }>(endpoint, compact(body));
+    const uuid = created?.uuid;
+    if (!uuid) throw new Error("Coolify did not return a uuid for the cloned application");
+
+    // The /public endpoint normalises the git URL to "owner/repo" (assuming
+    // github.com) and drops the real host. PATCH the exact original URL back so
+    // self-hosted (gitea/gitlab) or inline-credential repos still clone.
+    if (endpoint.endsWith("/public") && typeof src.git_repository === "string") {
+      await this.patch(`/api/v1/applications/${uuid}`, { git_repository: src.git_repository }).catch(() => undefined);
+    }
+    return uuid;
+  }
+
+  /** Resolve a private SSH key's uuid from its numeric id (deploy-key clones). */
+  async resolvePrivateKeyUuid(id: number): Promise<string | undefined> {
+    const keys = await this.get<any[]>("/api/v1/security/keys").catch(() => []);
+    return (keys ?? []).find((k) => k?.id === id)?.uuid;
+  }
+
+  /** Resolve a git source's (GitHub App) uuid from its numeric id. */
+  async resolveSourceUuid(id: number): Promise<string | undefined> {
+    const sources = await this.get<any[]>("/api/v1/sources").catch(() => []);
+    return (sources ?? []).find((s) => s?.id === id)?.uuid;
   }
 
   /**

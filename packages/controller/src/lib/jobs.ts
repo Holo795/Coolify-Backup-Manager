@@ -187,6 +187,7 @@ async function cloneForRestore(
       environmentName,
       gitCommitSha: sha && sha !== "HEAD" ? sha : undefined,
       imageRef: manifest.provenance?.imageRef,
+      imageDigest: manifest.provenance?.imageDigest,
     });
     await client.copyEnvVars("applications", resource.coolifyUuid, newUuid).catch(() => 0);
   } else if (type === "service") {
