@@ -1,7 +1,7 @@
 import { prisma } from "./prisma";
 import type { BackupPolicy, Destination } from "@/generated/prisma/client";
 
-/** Frequency presets -> cron (UTC). */
+/** Frequency presets -> cron (evaluated in the timezone set in Settings). */
 export const FREQUENCIES: Record<string, string> = {
   hourly: "0 * * * *",
   daily: "0 2 * * *",
@@ -23,12 +23,13 @@ export function cronToFrequency(cron: string): string {
 }
 
 /** Human description of a cron expression for the UI. */
-export function describeCron(cron: string): string {
+export function describeCron(cron: string, timeZone?: string): string {
+  const z = timeZone ? ` ${timeZone}` : "";
   for (const [name, expr] of Object.entries(FREQUENCIES)) {
     if (expr === cron) {
-      if (name === "weekly") return "weekly (Mon 02:00 UTC)";
-      if (name === "monthly") return "monthly (1st, 02:00 UTC)";
-      if (name === "daily") return "daily at 02:00 UTC";
+      if (name === "weekly") return `weekly (Mon 02:00${z})`;
+      if (name === "monthly") return `monthly (1st, 02:00${z})`;
+      if (name === "daily") return `daily at 02:00${z}`;
       if (name === "hourly") return "hourly";
     }
   }

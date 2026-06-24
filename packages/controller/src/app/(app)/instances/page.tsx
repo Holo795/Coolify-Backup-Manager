@@ -8,6 +8,7 @@ import { ActionButton } from "@/components/action-button";
 import { RevealInstall } from "@/components/reveal-install";
 import { timeAgo } from "@/lib/cn";
 import { describeCron, cronToFrequency } from "@/lib/schedule";
+import { getTimezone } from "@/lib/settings";
 import { Server, RefreshCw, Trash2, CalendarClock, ShieldCheck } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,7 @@ export default async function InstancesPage() {
     }),
     prisma.destination.findMany({ orderBy: { name: "asc" } }),
   ]);
+  const tz = await getTimezone();
 
   // Last scheduled run per instance schedule: the most recent runId + its tally.
   const policyIds = instances.map((i) => i.policies[0]?.id).filter((x): x is string => !!x);
@@ -128,7 +130,7 @@ export default async function InstancesPage() {
                       <CalendarClock className="h-3.5 w-3.5 text-muted-foreground" />
                       {i.policies[0] ? (
                         <span>
-                          Backups <span className="font-medium text-foreground">{describeCron(i.policies[0].cron)}</span> →{" "}
+                          Backups <span className="font-medium text-foreground">{describeCron(i.policies[0].cron, tz)}</span> →{" "}
                           {i.policies[0].destination.name} · {i.policies[0].mode} · keep {i.policies[0].retentionDaily}d/
                           {i.policies[0].retentionWeekly}w/{i.policies[0].retentionMonthly}m
                         </span>

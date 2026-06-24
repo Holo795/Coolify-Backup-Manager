@@ -13,6 +13,13 @@ export function formatBytes(n: number | bigint): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+/** Absolute date+time formatted in the given IANA timezone (server or client). */
+export function formatDateTime(date: Date | string | null | undefined, timeZone?: string): string {
+  if (!date) return "—";
+  const d = typeof date === "string" ? new Date(date) : date;
+  return d.toLocaleString("fr-FR", { timeZone, hour12: false });
+}
+
 export function timeAgo(date: Date | string | null | undefined): string {
   if (!date) return "—";
   const d = typeof date === "string" ? new Date(date) : date;

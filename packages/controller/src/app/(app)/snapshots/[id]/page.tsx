@@ -7,7 +7,7 @@ import { ActionButton } from "@/components/action-button";
 import { ConfirmDeleteButton } from "@/components/confirm-delete";
 import { RestoreActions } from "@/components/restore-actions";
 import { LiveLog } from "@/components/live-log";
-import { formatBytes } from "@/lib/cn";
+import { formatBytes, formatDateTime } from "@/lib/cn";
 import { getTimezone } from "@/lib/settings";
 import { GitCommitHorizontal } from "lucide-react";
 
@@ -133,7 +133,7 @@ export default async function SnapshotDetail({ params }: { params: Promise<{ id:
                 <div className="flex items-center gap-2 text-sm">
                   <Badge tone={statusTone(r.status)}>{r.status}</Badge>
                   <span className="text-muted-foreground">
-                    {r.target === "new_resource" ? "→ new resource" : "in place"} · {r.createdAt.toISOString().slice(0, 19).replace("T", " ")}
+                    {r.target === "new_resource" ? "→ new resource" : "in place"} · {formatDateTime(r.createdAt, tz)}
                   </span>
                   {r.error && <span className="text-xs text-[var(--color-danger)]">{r.error}</span>}
                 </div>

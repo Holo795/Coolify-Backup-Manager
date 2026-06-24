@@ -10,6 +10,7 @@ import { setResourceOptions, setResourceSchedule, removeResourceOverride, backup
 import { ConfirmDeleteButton } from "@/components/confirm-delete";
 import { RestoreActions } from "@/components/restore-actions";
 import { effectivePolicy, describeCron, cronToFrequency } from "@/lib/schedule";
+import { getTimezone } from "@/lib/settings";
 import { formatBytes, timeAgo } from "@/lib/cn";
 import { DUMPABLE_DB_TYPES } from "@cbm/shared";
 import { Play, ArrowLeft, Unplug } from "lucide-react";
@@ -42,6 +43,7 @@ export default async function ResourceDetail({ params }: { params: Promise<{ id:
   });
   const agentDown = !liveAgent;
   const removed = resource.status === "deleted"; // no longer in Coolify
+  const tz = await getTimezone();
 
   return (
     <>
@@ -104,7 +106,7 @@ export default async function ResourceDetail({ params }: { params: Promise<{ id:
               ) : eff.source === "instance" ? (
                 <>
                   Inherits <span className="text-foreground">{resource.instance.name}</span>:{" "}
-                  {eff.policy ? describeCron(eff.policy.cron) : "—"} → {eff.policy?.destination.name}
+                  {eff.policy ? describeCron(eff.policy.cron, tz) : "—"} → {eff.policy?.destination.name}
                 </>
               ) : eff.source === "none" ? (
                 <span className="text-[var(--color-warning)]">No schedule — set one on the instance, or override here.</span>
@@ -118,7 +120,7 @@ export default async function ResourceDetail({ params }: { params: Promise<{ id:
               <div className="flex items-center gap-2 text-xs">
                 <Badge tone="accent">override</Badge>
                 <span>
-                  {describeCron(override.cron)} → {override.destination.name} · {override.mode}
+                  {describeCron(override.cron, tz)} → {override.destination.name} · {override.mode}
                 </span>
                 <form action={removeResourceOverride.bind(null, resource.id)}>
                   <button type="submit" className="text-[var(--color-danger)] hover:underline">
