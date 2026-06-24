@@ -278,22 +278,31 @@ export class CoolifyClient {
     if (!src.git_repository) {
       throw new Error(`Application "${src.name}" can't be "→ new" cloned (no git repo and no docker image)`);
     }
-    const body = compact({
+    // The /applications/public endpoint validates the body against the build
+    // pack: build-pack-specific fields (dockerfile_location, etc.) are rejected
+    // ("This field is not allowed") unless they match. Send only what fits.
+    const bp = (src.build_pack as string | undefined) ?? "nixpacks";
+    const body: Record<string, unknown> = {
       ...base,
       git_repository: src.git_repository,
       git_branch: src.git_branch,
       git_commit_sha: opts.gitCommitSha || src.git_commit_sha || "HEAD",
-      build_pack: src.build_pack,
+      build_pack: bp,
       base_directory: src.base_directory,
-      publish_directory: src.publish_directory,
-      install_command: src.install_command,
-      build_command: src.build_command,
-      start_command: src.start_command,
-      dockerfile_location: src.dockerfile_location,
-      docker_compose_location: src.docker_compose_location,
-      static_image: src.static_image,
-    });
-    const created = await this.post<{ uuid?: string }>(`/api/v1/applications/public`, body);
+    };
+    if (bp === "nixpacks" || bp === "static") {
+      Object.assign(body, {
+        install_command: src.install_command,
+        build_command: src.build_command,
+        start_command: src.start_command,
+        publish_directory: src.publish_directory,
+      });
+    }
+    if (bp === "static") body.static_image = src.static_image;
+    if (bp === "dockerfile") body.dockerfile_location = src.dockerfile_location;
+    if (bp === "dockercompose") body.docker_compose_location = src.docker_compose_location;
+
+    const created = await this.post<{ uuid?: string }>(`/api/v1/applications/public`, compact(body));
     if (!created?.uuid) throw new Error("Coolify did not return a uuid for the cloned application");
     return created.uuid;
   }
@@ -324,7 +333,8 @@ export class CoolifyClient {
       instant_deploy: false,
     };
     let body: Record<string, unknown>;
-    if (compose) body = { ...base, docker_compose_raw: compose };
+    // The /services endpoint requires docker_compose_raw to be base64-encoded.
+    if (compose) body = { ...base, docker_compose_raw: Buffer.from(String(compose), "utf8").toString("base64") };
     else if (src.service_type) body = { ...base, type: src.service_type };
     else throw new Error(`Service "${src.name}" can't be cloned automatically (no compose exposed by the API)`);
 
