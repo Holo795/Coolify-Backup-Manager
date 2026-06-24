@@ -1,7 +1,6 @@
 import { z } from "zod";
 import {
   ArtifactKind,
-  CaptureMode,
   DestinationType,
   EventLevel,
   JobStatus,
@@ -113,7 +112,8 @@ export const SnapshotManifest = z.object({
   version: z.literal(1).default(1),
   resource: ResourceDescriptor,
   mode: PolicyMode,
-  captureMode: CaptureMode,
+  /** How it was captured, for display: "dump" | "frozen" | "live" | … */
+  captureMode: z.string(),
   capturedAt: z.string(), // ISO timestamp, stamped by controller/agent
   artifacts: z.array(Artifact).default([]),
   provenance: Provenance.default({}),
@@ -134,7 +134,9 @@ export const BackupJob = z.object({
   id: z.string(),
   type: z.literal("backup"),
   mode: PolicyMode,
-  captureMode: CaptureMode,
+  /** When true, copy volumes live without ever freezing a container (at the
+   * operator's risk of inconsistency). Default: freeze RW containers briefly. */
+  liveBackup: z.boolean().default(false),
   resource: ResourceDescriptor,
   destination: ResolvedDestination,
   encryption: EncryptionSpec,

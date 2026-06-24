@@ -66,7 +66,12 @@ export async function enqueueBackup(resourceId: string, policyId?: string, runId
   if (!agent) throw new Error("No agent available to run the job");
 
   const mode = (policy?.mode ?? "backup") as "backup" | "sync";
-  const captureMode = resource.captureMode as "cold" | "hot";
+  const liveBackup = resource.liveBackup;
+  // Descriptive label of how it will be captured (the agent confirms it in the
+  // manifest). Databases are dumped live; everything else is frozen-then-copied
+  // unless the operator opted into a live (no-freeze) copy.
+  const isDumpable = DUMP_ENGINES.includes(resource.type as DbEngine);
+  const captureMode = isDumpable ? "dump" : liveBackup ? "live" : "frozen";
   const iso = new Date().toISOString();
   const dir = snapshotDir(resource.coolifyUuid, mode, iso);
 
@@ -103,7 +108,7 @@ export async function enqueueBackup(resourceId: string, policyId?: string, runId
     id: agentJob.id,
     type: "backup",
     mode,
-    captureMode,
+    liveBackup,
     resource: {
       coolifyUuid: resource.coolifyUuid,
       name: resource.name,

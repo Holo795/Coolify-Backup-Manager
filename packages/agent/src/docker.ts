@@ -96,6 +96,38 @@ export async function startContainer(name: string): Promise<void> {
   if (r.code !== 0) throw new Error(`docker start ${name} failed: ${r.stderr}`);
 }
 
+/** Freeze a container's processes in place (no restart, state preserved). */
+export async function pauseContainer(name: string): Promise<void> {
+  const r = await docker(["pause", name]);
+  if (r.code !== 0) throw new Error(`docker pause ${name} failed: ${r.stderr}`);
+}
+
+/** Resume a previously frozen container. */
+export async function unpauseContainer(name: string): Promise<void> {
+  const r = await docker(["unpause", name]);
+  if (r.code !== 0) throw new Error(`docker unpause ${name} failed: ${r.stderr}`);
+}
+
+/**
+ * Running containers that mount `volume` read-write — i.e. the ones that could
+ * be writing to it, so they need a brief freeze for a consistent copy. A volume
+ * mounted read-only (or by no running container) needs no freeze.
+ */
+export async function runningRwContainersForVolume(volume: string): Promise<string[]> {
+  const r = await docker(["ps", "--filter", `volume=${volume}`, "--format", "{{.Names}}"]);
+  if (r.code !== 0) return [];
+  const names = r.stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+  const out: string[] = [];
+  for (const name of names) {
+    const info = await inspectContainer(name);
+    const mounts: Array<{ Name?: string; Source?: string; RW?: boolean }> = info?.Mounts ?? [];
+    const m = mounts.find((x) => x?.Name === volume || x?.Source?.endsWith(`/volumes/${volume}/_data`));
+    // RW === false means read-only; anything else is treated as writable.
+    if (!m || m.RW !== false) out.push(name);
+  }
+  return out;
+}
+
 /** Tar a docker volume into a tarball on the host using a throwaway helper. */
 export async function tarVolume(volume: string, outFile: string): Promise<void> {
   // Stream the tar of the volume contents to stdout, then into outFile.

@@ -8,7 +8,7 @@ test("BackupJob parses a valid payload", () => {
     id: "job-1",
     type: "backup",
     mode: "backup",
-    captureMode: "hot",
+    liveBackup: false,
     resource: {
       coolifyUuid: "abc",
       name: "events-db",

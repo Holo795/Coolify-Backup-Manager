@@ -14,8 +14,9 @@ import {
 import { dumpDatabase, dumpEngine } from "./dump.js";
 import {
   tarVolume,
-  stopContainer,
-  startContainer,
+  pauseContainer,
+  unpauseContainer,
+  runningRwContainersForVolume,
   containerExists,
 } from "./docker.js";
 import { captureProvenance } from "./provenance.js";
@@ -34,7 +35,7 @@ export async function runBackup(job: BackupJob, workDir: string, emit: Emit): Pr
   const needsResolve =
     job.resource.volumes.length === 0 || (!job.resource.containerName && job.resource.containerNames.length === 0);
   const resource = needsResolve ? await resolveResource(job.resource) : job.resource;
-  const captureMode = job.captureMode;
+  const liveBackup = job.liveBackup;
   const artifacts: Artifact[] = [];
   const isDb = DUMPABLE_DB_TYPES.includes(resource.type);
   const containers = resource.containerNames.length
@@ -42,8 +43,10 @@ export async function runBackup(job: BackupJob, workDir: string, emit: Emit): Pr
     : resource.containerName
       ? [resource.containerName]
       : [];
+  // What the agent actually did, recorded in the manifest for display.
+  let captureMethod = "none";
 
-  emit("info", `Starting ${job.mode} (${captureMode}) of ${resource.name} [${resource.type}]`, 2);
+  emit("info", `Starting ${job.mode} of ${resource.name} [${resource.type}]`, 2);
 
   // Provenance (best-effort) from the primary container.
   let provenance: Provenance = {};
@@ -76,49 +79,50 @@ export async function runBackup(job: BackupJob, workDir: string, emit: Emit): Pr
       await tarVolume(vol, path);
       artifacts.push(await finalizeArtifact("volume", name, path, { volume: vol }, job, stage, emit));
     }
-  } else if (captureMode === "hot" && isDb) {
-    // Logical dump, no downtime.
-    if (!primary) throw new Error("Hot DB backup requires a container name");
-    emit("info", `Dumping database via ${resource.type}`, 20);
+    captureMethod = "dump+live";
+  } else if (isDb) {
+    // Standalone database: always a logical dump while running — no downtime,
+    // no restart, application-consistent.
+    if (!primary) throw new Error("Database backup requires a container name");
+    emit("info", `Dumping database via ${resource.type} (no downtime)`, 20);
     const engine = dumpEngine(resource.type);
     const dumpName = dumpFileName(engine, resource.db?.database);
     const dumpPath = join(stage, dumpName);
     await dumpDatabase(resource.type, primary, resource.db ?? {}, dumpPath);
-    artifacts.push(
-      await finalizeArtifact("db-dump", dumpName, dumpPath, { engine }, job, stage, emit),
-    );
+    artifacts.push(await finalizeArtifact("db-dump", dumpName, dumpPath, { engine }, job, stage, emit));
+    captureMethod = "dump";
   } else {
-    // Cold capture (default & only path for non-dumpable types): stop -> tar -> start.
-    const stopped: string[] = [];
-    try {
-      if (captureMode === "cold") {
-        for (const c of containers) {
-          if (await containerExists(c)) {
-            emit("info", `Stopping container ${c}`);
-            await stopContainer(c);
-            stopped.push(c);
-          }
+    // Everything else (apps, services, non-dumpable DBs): copy each volume
+    // WITHOUT ever stopping/recreating a container. For a consistent copy we
+    // briefly freeze (docker pause) only the running containers that mount the
+    // volume read-write — unless liveBackup is set, in which case we copy live.
+    let i = 0;
+    for (const vol of resource.volumes) {
+      i++;
+      const owners = liveBackup ? [] : await runningRwContainersForVolume(vol);
+      const paused: string[] = [];
+      try {
+        for (const c of owners) {
+          emit("info", `Freezing ${c} for a consistent copy of ${vol}`);
+          await pauseContainer(c);
+          paused.push(c);
         }
-      } else {
-        emit("warn", `Hot capture of non-DB resource: volumes are tarred live and may be inconsistent`);
-      }
-      let i = 0;
-      for (const vol of resource.volumes) {
-        i++;
+        if (liveBackup) {
+          emit("warn", `Live copy of ${vol} without freezing (at your own risk) — may be inconsistent`);
+        }
         emit("info", `Archiving volume ${vol} (${i}/${resource.volumes.length})`, 20 + (50 * i) / Math.max(1, resource.volumes.length));
         const name = volumeFileName(vol);
         const path = join(stage, name);
         await tarVolume(vol, path);
-        artifacts.push(
-          await finalizeArtifact("volume", name, path, { volume: vol }, job, stage, emit),
-        );
-      }
-    } finally {
-      for (const c of stopped.reverse()) {
-        emit("info", `Restarting container ${c}`);
-        await startContainer(c).catch((e) => emit("error", `Failed to restart ${c}: ${(e as Error).message}`));
+        artifacts.push(await finalizeArtifact("volume", name, path, { volume: vol }, job, stage, emit));
+      } finally {
+        for (const c of paused.reverse()) {
+          emit("info", `Resuming ${c}`);
+          await unpauseContainer(c).catch((e) => emit("error", `Failed to resume ${c}: ${(e as Error).message}`));
+        }
       }
     }
+    captureMethod = resource.volumes.length === 0 ? "none" : liveBackup ? "live" : "frozen";
   }
 
   // Config artifact (resource descriptor + provenance) — sensitive, encrypt if enabled.
@@ -134,7 +138,7 @@ export async function runBackup(job: BackupJob, workDir: string, emit: Emit): Pr
     version: 1,
     resource: sanitizedResource,
     mode: job.mode,
-    captureMode,
+    captureMode: captureMethod,
     capturedAt: new Date().toISOString(),
     artifacts,
     provenance,

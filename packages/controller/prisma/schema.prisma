@@ -111,7 +111,10 @@ model Resource {
   status       String        @default("unknown")
   // Per-resource backup settings
   backupEnabled Boolean      @default(false)
-  captureMode  String        @default("cold") // cold | hot
+  // Backups never restart a resource. When liveBackup is true, volumes are
+  // copied live without even a brief freeze (at the operator's risk); otherwise
+  // the agent briefly freezes the writing containers for a consistent copy.
+  liveBackup   Boolean       @default(false)
   excluded     Boolean       @default(false)
   retentionOverride Int?
   // Agent-discovered docker facts (cached)

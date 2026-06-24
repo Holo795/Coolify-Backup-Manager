@@ -1,10 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/page-header";
-import { Card, CardContent, Badge, Button, Input, Select, statusTone, EmptyState } from "@/components/ui";
+import { Card, CardContent, Badge, Button, Input, statusTone, EmptyState } from "@/components/ui";
 import { updateResourceSettings, backupNow } from "@/app/actions";
 import { ActionButton } from "@/components/action-button";
 import { Boxes, Play, Unplug } from "lucide-react";
-import { DUMPABLE_DB_TYPES } from "@cbm/shared";
 
 export const dynamic = "force-dynamic";
 
@@ -80,7 +79,6 @@ export default async function ResourcesPage({
               </thead>
               <tbody>
                 {resources.map((r) => {
-                  const canHot = DUMPABLE_DB_TYPES.includes(r.type as never);
                   const agentDown = !liveInstanceIds.has(r.instanceId);
 
                   // No live agent -> the whole row is blurred and non-interactive,
@@ -123,16 +121,16 @@ export default async function ResourcesPage({
                         <Badge tone={statusTone(r.status)}>{r.status}</Badge>
                       </td>
                       <td className="px-4 py-2.5">
-                        <form action={updateResourceSettings.bind(null, r.id)} className="flex items-center gap-2">
+                        <form action={updateResourceSettings.bind(null, r.id)} className="flex items-center gap-3">
                           <label className="flex items-center gap-1.5 text-xs">
                             <input type="checkbox" name="backupEnabled" defaultChecked={r.backupEnabled} /> on
                           </label>
-                          <Select name="captureMode" defaultValue={r.captureMode} className="h-8 w-24 text-xs">
-                            <option value="cold">cold</option>
-                            <option value="hot" disabled={!canHot}>
-                              hot
-                            </option>
-                          </Select>
+                          <label
+                            className="flex items-center gap-1.5 text-xs"
+                            title="Copier les fichiers sans figer les conteneurs (zéro interruption, mais risque d'incohérence)"
+                          >
+                            <input type="checkbox" name="liveBackup" defaultChecked={r.liveBackup} /> live
+                          </label>
                           <Button type="submit" size="sm" variant="outline">
                             Save
                           </Button>

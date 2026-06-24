@@ -107,7 +107,6 @@ export async function backupCoolifyInstance(instanceId: string) {
       type: "postgresql",
       projectName: "Coolify",
       status: "running:healthy",
-      captureMode: "hot",
       backupEnabled: true,
     },
     update: {},
@@ -413,7 +412,7 @@ export async function updateResourceSettings(resourceId: string, fd: FormData): 
     data: {
       backupEnabled: fd.get("backupEnabled") === "on",
       excluded: fd.get("excluded") === "on",
-      captureMode: s(fd, "captureMode") || "cold",
+      liveBackup: fd.get("liveBackup") === "on",
     },
   });
   revalidatePath("/resources");
@@ -426,7 +425,7 @@ export async function setResourceOptions(resourceId: string, fd: FormData) {
   await prisma.resource.update({
     where: { id: resourceId },
     data: {
-      captureMode: s(fd, "captureMode") || "cold",
+      liveBackup: fd.get("liveBackup") === "on",
       excluded: fd.get("excluded") === "on",
       backupEnabled: true,
     },

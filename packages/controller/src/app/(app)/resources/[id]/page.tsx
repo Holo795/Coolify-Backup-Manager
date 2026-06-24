@@ -5,14 +5,13 @@ import { PageHeader } from "@/components/page-header";
 import { ActionForm } from "@/components/action-form";
 import { ScheduleForm } from "@/components/schedule-form";
 import { ActionButton } from "@/components/action-button";
-import { Card, CardContent, CardHeader, CardTitle, Badge, Select, Label, statusTone } from "@/components/ui";
+import { Card, CardContent, CardHeader, CardTitle, Badge, statusTone } from "@/components/ui";
 import { setResourceOptions, setResourceSchedule, removeResourceOverride, backupNow, deleteSnapshot } from "@/app/actions";
 import { ConfirmDeleteButton } from "@/components/confirm-delete";
 import { RestoreActions } from "@/components/restore-actions";
 import { effectivePolicy, describeCron, cronToFrequency } from "@/lib/schedule";
 import { getTimezone } from "@/lib/settings";
 import { formatBytes, timeAgo } from "@/lib/cn";
-import { DUMPABLE_DB_TYPES } from "@cbm/shared";
 import { Play, ArrowLeft, Unplug } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -33,8 +32,6 @@ export default async function ResourceDetail({ params }: { params: Promise<{ id:
     }),
     effectivePolicy(id),
   ]);
-
-  const canHot = DUMPABLE_DB_TYPES.includes(resource.type as never);
 
   // Backups/restores need a live agent on this resource's instance.
   const liveAgent = await prisma.agent.findFirst({
@@ -81,15 +78,21 @@ export default async function ResourceDetail({ params }: { params: Promise<{ id:
           </CardHeader>
           <CardContent>
             <ActionForm action={setResourceOptions.bind(null, resource.id)} submitLabel="Save options" resetOnSuccess={false}>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="captureMode">Capture mode</Label>
-                <Select id="captureMode" name="captureMode" defaultValue={resource.captureMode}>
-                  <option value="cold">cold — stop, copy volumes, restart (safe)</option>
-                  <option value="hot" disabled={!canHot}>
-                    hot — live dump, no downtime (databases)
-                  </option>
-                </Select>
-              </div>
+              <p className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                Les sauvegardes ne redémarrent jamais cette ressource. Les bases de données sont exportées en marche ;
+                pour les fichiers, l&apos;agent fige (met en pause) quelques secondes uniquement les conteneurs qui
+                écrivent, puis les relance — sans aucun redémarrage.
+              </p>
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" name="liveBackup" defaultChecked={resource.liveBackup} className="mt-0.5" />
+                <span>
+                  <span className="font-medium">Copier en marche, sans figer (à mes risques)</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    Copie les fichiers sans aucun gel : zéro interruption, mais un fichier réécrit pile pendant la copie
+                    pourrait être incohérent. À éviter si la ressource écrit beaucoup hors base de données.
+                  </span>
+                </span>
+              </label>
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" name="excluded" defaultChecked={resource.excluded} /> Exclude from scheduled backups
               </label>
