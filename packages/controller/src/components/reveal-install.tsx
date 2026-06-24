@@ -43,9 +43,10 @@ export function RevealInstall({ instanceId, hasToken }: { instanceId: string; ha
       <div className="flex items-start gap-2 rounded-md border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 p-2.5 text-xs">
         <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-warning)]" />
         <span>
-          Copy this now — the token is shown <b>once</b> and can&apos;t be retrieved later. It also{" "}
-          <b>invalidates any previous token</b>: an agent already running on this host must be reconfigured by
-          re-running the command.
+          Copy this now — the token is shown <b>once</b> and can&apos;t be retrieved later. Revealing{" "}
+          <b>rotates the enrollment token</b>: the previous command no longer works for new installs. An agent already
+          running keeps working with its session token, but will need this new command if it&apos;s restarted /
+          reconfigured.
         </span>
       </div>
 
