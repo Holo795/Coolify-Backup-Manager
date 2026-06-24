@@ -187,7 +187,6 @@ async function cloneForRestore(
       environmentName,
       gitCommitSha: sha && sha !== "HEAD" ? sha : undefined,
       imageRef: manifest.provenance?.imageRef,
-      imageDigest: manifest.provenance?.imageDigest,
     });
     await client.copyEnvVars("applications", resource.coolifyUuid, newUuid).catch(() => 0);
   } else if (type === "service") {
@@ -230,6 +229,25 @@ function buildVolumeMap(
   return Object.keys(map).length ? map : undefined;
 }
 
+const FLOATING_TAGS = ["latest", "main", "master", "stable", "edge", "nightly"];
+
+/**
+ * When a docker-image resource ran a floating tag (latest/…), Coolify can't pin
+ * the clone to the exact digest (its image field is "name:tag", no digest), so
+ * we tell the operator the exact image captured at backup so they can pin it.
+ */
+function imagePinNote(manifest: SnapshotManifest): string | undefined {
+  const ref = manifest.provenance?.imageRef;
+  const digest = manifest.provenance?.imageDigest;
+  if (!ref || ref.includes("@") || !digest || !digest.includes("@sha256:")) return undefined;
+  const tag = ref.split(":").pop();
+  if (!tag || !FLOATING_TAGS.includes(tag.toLowerCase())) return undefined;
+  return (
+    `The image tag was floating ("${tag}"), so the clone is pinned to "${tag}" — Coolify docker-image apps can't store a ` +
+    `digest. The exact image at backup time was ${digest}; pin it manually if you need an identical reproduction.`
+  );
+}
+
 /** Authoritative dump/restore DB credentials from the Coolify API (the
  * container env isn't always reliable). undefined for non-DB / coolify-self. */
 async function dbCredsFor(resource: {
@@ -264,9 +282,11 @@ export async function enqueueRestore(snapshotId: string, target: "in_place" | "n
   // volume map tells the agent which (uuid-swapped) volumes to fill.
   let targetResource: ResourceDescriptor | undefined;
   let volumeMap: Record<string, string> | undefined;
+  let note: string | undefined;
   if (target === "new_resource") {
     targetResource = await cloneForRestore(snapshot.resource, manifest);
     volumeMap = buildVolumeMap(manifest, snapshot.resource.coolifyUuid, targetResource.coolifyUuid);
+    note = imagePinNote(manifest);
   }
 
   const restore = await prisma.restoreJob.create({
@@ -292,6 +312,7 @@ export async function enqueueRestore(snapshotId: string, target: "in_place" | "n
     target,
     targetResource,
     volumeMap,
+    note,
     // Same DB keeps its name/creds in the clone, so the original's creds work.
     db: await dbCredsFor(snapshot.resource),
   };

@@ -243,8 +243,6 @@ export class CoolifyClient {
     gitCommitSha?: string;
     /** Captured image reference (e.g. "org/name:v1.2.3") for docker-image apps. */
     imageRef?: string;
-    /** Captured pullable digest ("org/name@sha256:…") to pin a floating tag. */
-    imageDigest?: string;
   }): Promise<string> {
     const src = await this.getApplication(opts.sourceUuid);
     const serverUuid = src?.destination?.server?.uuid;
@@ -261,26 +259,20 @@ export class CoolifyClient {
       instant_deploy: false,
     };
 
-    // Docker-image app: pin the captured tag — or, when the tag is floating
-    // (latest/…), the exact deployed digest — so the clone runs the same image
-    // the data was backed up against, never a tag that has since moved.
+    // Docker-image app: pin the captured tag so the clone runs the same image
+    // the data was backed up against. NOTE: Coolify builds the pull ref as
+    // "name:tag" and rejects an empty tag, so a digest can't be pinned here
+    // (it would become "name@sha256:…:tag" — an invalid reference). For a
+    // floating tag the controller surfaces the exact digest in the restore log
+    // so the operator can pin it manually.
     const isImageApp =
       src.build_pack === "dockerimage" || (!src.git_repository && !!src.docker_registry_image_name);
     if (isImageApp) {
       const pinned = parseImageRef(opts.imageRef);
-      let imageName = pinned.name || (src.docker_registry_image_name as string | undefined);
-      const imageTag = pinned.tag || (src.docker_registry_image_tag as string | undefined) || "latest";
-      const floating = !pinned.tag || ["latest", "main", "master", "stable", "edge", "nightly"].includes(imageTag.toLowerCase());
-      // Coolify's tag field can't hold a digest (it splits on ":"), so pin the
-      // digest inside the image name ("repo/name@sha256:…") with the tag as a
-      // placeholder. A concrete tag is kept as-is.
-      if (floating && opts.imageDigest && opts.imageDigest.includes("@sha256:")) {
-        imageName = opts.imageDigest;
-      }
       const body = compact({
         ...base,
-        docker_registry_image_name: imageName,
-        docker_registry_image_tag: imageTag,
+        docker_registry_image_name: pinned.name || src.docker_registry_image_name,
+        docker_registry_image_tag: pinned.tag || src.docker_registry_image_tag || "latest",
       });
       const created = await this.post<{ uuid?: string }>(`/api/v1/applications/dockerimage`, body);
       if (!created?.uuid) throw new Error("Coolify did not return a uuid for the cloned image application");
