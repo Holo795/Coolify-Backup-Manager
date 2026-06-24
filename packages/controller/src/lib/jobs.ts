@@ -146,10 +146,13 @@ async function cloneForRestore(
   const projectName = resource.projectName;
   const environmentName = resource.environment || "production";
   const type = resource.type as ResourceType;
+  // The clone usually keeps the source type, but a floating-tag docker-image app
+  // is cloned as a digest-pinned service (see cloneApplication), so track it.
+  let clonedType: ResourceType = type;
   const descriptor = (newUuid: string): ResourceDescriptor => ({
     coolifyUuid: newUuid,
     name: newName,
-    type,
+    type: clonedType,
     containerNames: [],
     volumes: [],
   });
@@ -180,15 +183,21 @@ async function cloneForRestore(
     });
   } else if (type === "application") {
     const sha = manifest.provenance?.gitCommitSha;
-    newUuid = await client.cloneApplication({
+    const cloned = await client.cloneApplication({
       sourceUuid: resource.coolifyUuid,
       newName,
       projectName,
       environmentName,
       gitCommitSha: sha && sha !== "HEAD" ? sha : undefined,
       imageRef: manifest.provenance?.imageRef,
+      imageDigest: manifest.provenance?.imageDigest,
     });
-    await client.copyEnvVars("applications", resource.coolifyUuid, newUuid).catch(() => 0);
+    newUuid = cloned.uuid;
+    clonedType = cloned.type;
+    // Copy env best-effort (app -> app, or app -> service for a digest clone).
+    await client
+      .copyEnvVars("applications", resource.coolifyUuid, cloned.type === "service" ? "services" : "applications", newUuid)
+      .catch(() => 0);
   } else if (type === "service") {
     newUuid = await client.cloneService({
       sourceUuid: resource.coolifyUuid,
@@ -196,7 +205,7 @@ async function cloneForRestore(
       projectName,
       environmentName,
     });
-    await client.copyEnvVars("services", resource.coolifyUuid, newUuid).catch(() => 0);
+    await client.copyEnvVars("services", resource.coolifyUuid, "services", newUuid).catch(() => 0);
   } else {
     throw new Error(`Restore → new resource is not supported for type "${resource.type}"`);
   }
@@ -227,25 +236,6 @@ function buildVolumeMap(
     map[v] = v.split(o).join(n);
   }
   return Object.keys(map).length ? map : undefined;
-}
-
-const FLOATING_TAGS = ["latest", "main", "master", "stable", "edge", "nightly"];
-
-/**
- * When a docker-image resource ran a floating tag (latest/…), Coolify can't pin
- * the clone to the exact digest (its image field is "name:tag", no digest), so
- * we tell the operator the exact image captured at backup so they can pin it.
- */
-function imagePinNote(manifest: SnapshotManifest): string | undefined {
-  const ref = manifest.provenance?.imageRef;
-  const digest = manifest.provenance?.imageDigest;
-  if (!ref || ref.includes("@") || !digest || !digest.includes("@sha256:")) return undefined;
-  const tag = ref.split(":").pop();
-  if (!tag || !FLOATING_TAGS.includes(tag.toLowerCase())) return undefined;
-  return (
-    `The image tag was floating ("${tag}"), so the clone is pinned to "${tag}" — Coolify docker-image apps can't store a ` +
-    `digest. The exact image at backup time was ${digest}; pin it manually if you need an identical reproduction.`
-  );
 }
 
 /** Authoritative dump/restore DB credentials from the Coolify API (the
@@ -282,11 +272,9 @@ export async function enqueueRestore(snapshotId: string, target: "in_place" | "n
   // volume map tells the agent which (uuid-swapped) volumes to fill.
   let targetResource: ResourceDescriptor | undefined;
   let volumeMap: Record<string, string> | undefined;
-  let note: string | undefined;
   if (target === "new_resource") {
     targetResource = await cloneForRestore(snapshot.resource, manifest);
     volumeMap = buildVolumeMap(manifest, snapshot.resource.coolifyUuid, targetResource.coolifyUuid);
-    note = imagePinNote(manifest);
   }
 
   const restore = await prisma.restoreJob.create({
@@ -312,7 +300,6 @@ export async function enqueueRestore(snapshotId: string, target: "in_place" | "n
     target,
     targetResource,
     volumeMap,
-    note,
     // Same DB keeps its name/creds in the clone, so the original's creds work.
     db: await dbCredsFor(snapshot.resource),
   };

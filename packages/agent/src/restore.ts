@@ -120,7 +120,6 @@ export async function runRestore(job: RestoreJob, workDir: string, emit: Emit): 
           `domain/URL, then deploy. Restored volume data will be mounted on first deploy.`,
       );
     }
-    if (isNew && job.note) emit("warn", job.note);
 
     if (manifest.provenance.gitCommitSha || manifest.provenance.imageDigest) {
       emit(

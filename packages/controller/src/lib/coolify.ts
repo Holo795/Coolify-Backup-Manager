@@ -30,6 +30,9 @@ export interface DbConfig {
 /** All standalone-database engines Coolify can create via the API. */
 export type CloneEngine = DbEngine | "redis" | "keydb" | "dragonfly" | "clickhouse";
 
+/** Image tags that move over time — a clone must pin the digest, not the tag. */
+const FLOATING_IMAGE_TAGS = ["latest", "main", "master", "stable", "edge", "nightly"];
+
 /** Map an original DB config to the per-engine credential fields for create. */
 function dbCredsBody(type: CloneEngine, src: DbConfig): Record<string, unknown> {
   switch (type) {
@@ -243,7 +246,9 @@ export class CoolifyClient {
     gitCommitSha?: string;
     /** Captured image reference (e.g. "org/name:v1.2.3") for docker-image apps. */
     imageRef?: string;
-  }): Promise<string> {
+    /** Captured pullable digest ("org/name@sha256:…"); used to pin a floating tag. */
+    imageDigest?: string;
+  }): Promise<{ uuid: string; type: "application" | "service" }> {
     const src = await this.getApplication(opts.sourceUuid);
     const serverUuid = src?.destination?.server?.uuid;
     if (!serverUuid) throw new Error("Could not resolve the source application's server for cloning");
@@ -259,24 +264,47 @@ export class CoolifyClient {
       instant_deploy: false,
     };
 
-    // Docker-image app: pin the captured tag so the clone runs the same image
-    // the data was backed up against. NOTE: Coolify builds the pull ref as
-    // "name:tag" and rejects an empty tag, so a digest can't be pinned here
-    // (it would become "name@sha256:…:tag" — an invalid reference). For a
-    // floating tag the controller surfaces the exact digest in the restore log
-    // so the operator can pin it manually.
     const isImageApp =
       src.build_pack === "dockerimage" || (!src.git_repository && !!src.docker_registry_image_name);
     if (isImageApp) {
       const pinned = parseImageRef(opts.imageRef);
+      const tag = pinned.tag || (src.docker_registry_image_tag as string | undefined) || "latest";
+      const floating = !pinned.tag || FLOATING_IMAGE_TAGS.includes(tag.toLowerCase());
+
+      // A floating tag (latest/…) can't be reproduced exactly via the
+      // docker-image build pack (Coolify builds "name:tag" and can't store a
+      // digest). Clone it as a SERVICE whose compose pins the exact deployed
+      // digest, so the restore runs the identical image automatically.
+      if (floating && opts.imageDigest && opts.imageDigest.includes("@sha256:")) {
+        const svc = (pinned.name || String(src.docker_registry_image_name || "app")).split("/").pop() || "app";
+        const svcName = svc.replace(/[^a-z0-9_-]/gi, "-").toLowerCase() || "app";
+        const ports = String(src.ports_exposes || "80").split(",")[0].trim();
+        const compose =
+          `services:\n  ${svcName}:\n    image: ${opts.imageDigest}\n    ports:\n      - "${ports}"\n`;
+        const created = await this.post<{ uuid?: string }>(
+          `/api/v1/services`,
+          compact({
+            project_uuid: projectUuid,
+            server_uuid: serverUuid,
+            environment_name: opts.environmentName,
+            name: opts.newName,
+            instant_deploy: false,
+            docker_compose_raw: Buffer.from(compose, "utf8").toString("base64"),
+          }),
+        );
+        if (!created?.uuid) throw new Error("Coolify did not return a uuid for the digest-pinned service clone");
+        return { uuid: created.uuid, type: "service" };
+      }
+
+      // Concrete tag: a normal docker-image app reproduces it exactly.
       const body = compact({
         ...base,
         docker_registry_image_name: pinned.name || src.docker_registry_image_name,
-        docker_registry_image_tag: pinned.tag || src.docker_registry_image_tag || "latest",
+        docker_registry_image_tag: tag,
       });
       const created = await this.post<{ uuid?: string }>(`/api/v1/applications/dockerimage`, body);
       if (!created?.uuid) throw new Error("Coolify did not return a uuid for the cloned image application");
-      return created.uuid;
+      return { uuid: created.uuid, type: "application" };
     }
 
     if (!src.git_repository) {
@@ -334,7 +362,7 @@ export class CoolifyClient {
     if (endpoint.endsWith("/public") && typeof src.git_repository === "string") {
       await this.patch(`/api/v1/applications/${uuid}`, { git_repository: src.git_repository }).catch(() => undefined);
     }
-    return uuid;
+    return { uuid, type: "application" };
   }
 
   /** Resolve a private SSH key's uuid from its numeric id (deploy-key clones). */
@@ -385,13 +413,19 @@ export class CoolifyClient {
     return created.uuid;
   }
 
-  /** Best-effort copy of environment variables from one app/service to another. */
-  async copyEnvVars(kind: "applications" | "services", srcUuid: string, destUuid: string): Promise<number> {
-    const envs = await this.get<any[]>(`/api/v1/${kind}/${srcUuid}/envs`).catch(() => []);
+  /** Best-effort copy of environment variables between two resources (the
+   * source and destination may be different kinds, e.g. app -> service). */
+  async copyEnvVars(
+    srcKind: "applications" | "services",
+    srcUuid: string,
+    destKind: "applications" | "services",
+    destUuid: string,
+  ): Promise<number> {
+    const envs = await this.get<any[]>(`/api/v1/${srcKind}/${srcUuid}/envs`).catch(() => []);
     let n = 0;
     for (const e of envs ?? []) {
       if (!e?.key) continue;
-      const ok = await this.post(`/api/v1/${kind}/${destUuid}/envs`, {
+      const ok = await this.post(`/api/v1/${destKind}/${destUuid}/envs`, {
         key: e.key,
         value: e.value ?? "",
         is_preview: false,

@@ -167,9 +167,6 @@ export const RestoreJob = z.object({
    * deploy. Volumes with no mapping are skipped (the original is never touched).
    */
   volumeMap: z.record(z.string(), z.string()).optional(),
-  /** Optional human note the agent surfaces in the restore log (e.g. a floating
-   * image tag the clone couldn't pin to a digest). */
-  note: z.string().optional(),
 });
 export type RestoreJob = z.infer<typeof RestoreJob>;
 
