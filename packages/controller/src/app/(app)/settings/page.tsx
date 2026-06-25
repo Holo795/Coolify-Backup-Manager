@@ -15,7 +15,7 @@ export default async function SettingsPage() {
     <>
       <PageHeader title="Settings" description="Application-wide preferences" />
       <div className="flex max-w-xl flex-col gap-6">
-        <Card>
+        <Card id="timezone" className="scroll-mt-20">
           <CardHeader>
             <CardTitle>Timezone</CardTitle>
             <p className="text-sm text-muted-foreground">
@@ -28,7 +28,7 @@ export default async function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card id="alerts" className="scroll-mt-20">
           <CardHeader>
             <CardTitle>Failure alerts</CardTitle>
             <p className="text-sm text-muted-foreground">
