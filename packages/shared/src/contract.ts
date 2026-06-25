@@ -119,6 +119,9 @@ export const SnapshotManifest = z.object({
   provenance: Provenance.default({}),
   /** Encrypted env vars blob filename (config artifact holds compose/config). */
   envArtifact: z.string().optional(),
+  /** The resource's env vars (master-key-encrypted JSON), so the snapshot can be
+   * restored even if the original resource no longer exists in Coolify. */
+  envEnc: z.string().optional(),
   encrypted: z.boolean().default(false),
   /** Relative directory at the destination that holds this snapshot. */
   destinationDir: z.string(),
@@ -137,6 +140,10 @@ export const BackupJob = z.object({
   /** When true, copy volumes live without ever freezing a container (at the
    * operator's risk of inconsistency). Default: freeze RW containers briefly. */
   liveBackup: z.boolean().default(false),
+  /** The resource's environment variables, JSON then master-key-encrypted by the
+   * controller. The agent stores it verbatim in the manifest (it can't read it),
+   * so a backup is self-contained for a later restore. */
+  envEnc: z.string().optional(),
   resource: ResourceDescriptor,
   destination: ResolvedDestination,
   encryption: EncryptionSpec,

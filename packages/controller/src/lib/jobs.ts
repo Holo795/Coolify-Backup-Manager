@@ -10,7 +10,7 @@ import {
   snapshotDir,
 } from "@cbm/shared";
 import { prisma } from "./prisma";
-import { decryptSecret } from "./crypto";
+import { decryptSecret, encryptSecret } from "./crypto";
 import { effectivePolicy } from "./schedule";
 import { CoolifyClient, type DbEngine, type CloneEngine } from "./coolify";
 import { syncInstance } from "./discovery";
@@ -78,6 +78,8 @@ export async function enqueueBackup(resourceId: string, policyId?: string, runId
   // For real Coolify databases, read the dump credentials from the Coolify API
   // (authoritative) rather than relying on the container's env at backup time.
   const db = await dbCredsFor(resource);
+  // Capture env vars (apps/services) into the snapshot so it's self-contained.
+  const envEnc = await envEncFor(resource);
 
   const snapshot = await prisma.snapshot.create({
     data: {
@@ -109,6 +111,7 @@ export async function enqueueBackup(resourceId: string, policyId?: string, runId
     type: "backup",
     mode,
     liveBackup,
+    envEnc,
     resource: {
       coolifyUuid: resource.coolifyUuid,
       name: resource.name,
@@ -199,10 +202,15 @@ async function cloneForRestore(
     });
     newUuid = cloned.uuid;
     clonedType = cloned.type;
-    // Copy env best-effort (app -> app, or app -> service for a digest clone).
-    await client
-      .copyEnvVars("applications", resource.coolifyUuid, cloned.type === "service" ? "services" : "applications", newUuid)
-      .catch(() => 0);
+    // Env from the snapshot if present (autonomous), else live from the original.
+    await applyEnv(
+      client,
+      manifest,
+      cloned.type === "service" ? "services" : "applications",
+      newUuid,
+      "applications",
+      resource.coolifyUuid,
+    );
   } else if (type === "service") {
     newUuid = await client.cloneService({
       sourceUuid: resource.coolifyUuid,
@@ -210,7 +218,7 @@ async function cloneForRestore(
       projectName,
       environmentName,
     });
-    await client.copyEnvVars("services", resource.coolifyUuid, "services", newUuid).catch(() => 0);
+    await applyEnv(client, manifest, "services", newUuid, "services", resource.coolifyUuid);
   } else {
     throw new Error(`Restore → new resource is not supported for type "${resource.type}"`);
   }
@@ -257,6 +265,40 @@ async function dbCredsFor(resource: {
   if (!instance) return undefined;
   const client = new CoolifyClient(instance.baseUrl, decryptSecret(instance.apiTokenEnc));
   return client.getDbCredentials(resource.coolifyUuid, resource.type as DbEngine).catch(() => undefined);
+}
+
+/** Capture an app/service's env vars from Coolify, master-key-encrypted, so the
+ * snapshot is self-contained. undefined for other types, coolify-self, or none. */
+async function envEncFor(resource: { type: string; coolifyUuid: string; instanceId: string }): Promise<string | undefined> {
+  const kind = resource.type === "application" ? "applications" : resource.type === "service" ? "services" : null;
+  if (!kind || resource.coolifyUuid.startsWith("coolify-self")) return undefined;
+  const instance = await prisma.coolifyInstance.findUnique({ where: { id: resource.instanceId } });
+  if (!instance) return undefined;
+  const client = new CoolifyClient(instance.baseUrl, decryptSecret(instance.apiTokenEnc));
+  const envs = await client.getEnvVars(kind, resource.coolifyUuid).catch(() => []);
+  return envs.length ? encryptSecret(JSON.stringify(envs)) : undefined;
+}
+
+/** Set env on the cloned resource from the snapshot (self-contained) when
+ * available, else copy live from the still-present original. */
+async function applyEnv(
+  client: CoolifyClient,
+  manifest: SnapshotManifest,
+  destKind: "applications" | "services",
+  newUuid: string,
+  srcKind: "applications" | "services",
+  srcUuid: string,
+): Promise<void> {
+  if (manifest.envEnc) {
+    try {
+      const envs = JSON.parse(decryptSecret(manifest.envEnc)) as Array<Record<string, unknown>>;
+      await client.setEnvVars(destKind, newUuid, envs);
+      return;
+    } catch {
+      /* fall back to live copy below */
+    }
+  }
+  await client.copyEnvVars(srcKind, srcUuid, destKind, newUuid).catch(() => 0);
 }
 
 /** Create a RestoreJob + queued AgentJob from an existing snapshot. */

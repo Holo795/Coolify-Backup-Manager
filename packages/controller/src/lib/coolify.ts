@@ -413,20 +413,23 @@ export class CoolifyClient {
     return created.uuid;
   }
 
-  /** Best-effort copy of environment variables between two resources (the
-   * source and destination may be different kinds, e.g. app -> service). */
-  async copyEnvVars(
-    srcKind: "applications" | "services",
-    srcUuid: string,
-    destKind: "applications" | "services",
-    destUuid: string,
+  /** Read a resource's environment variables (excluding Coolify-managed ones). */
+  async getEnvVars(kind: "applications" | "services", uuid: string): Promise<Array<Record<string, unknown>>> {
+    const envs = await this.get<any[]>(`/api/v1/${kind}/${uuid}/envs`).catch(() => []);
+    return (envs ?? []).filter((e) => e?.key && !e.is_coolify);
+  }
+
+  /** Best-effort set of environment variables on a resource. */
+  async setEnvVars(
+    kind: "applications" | "services",
+    uuid: string,
+    envs: Array<Record<string, unknown>>,
   ): Promise<number> {
-    const envs = await this.get<any[]>(`/api/v1/${srcKind}/${srcUuid}/envs`).catch(() => []);
     let n = 0;
     for (const e of envs ?? []) {
-      if (!e?.key || e.is_coolify) continue; // skip Coolify-managed vars
+      if (!e?.key) continue;
       // Coolify's field is `is_buildtime` (not `is_build_time` — that 500s).
-      const ok = await this.post(`/api/v1/${destKind}/${destUuid}/envs`, {
+      const ok = await this.post(`/api/v1/${kind}/${uuid}/envs`, {
         key: e.key,
         value: e.value ?? "",
         is_preview: false,
@@ -439,6 +442,17 @@ export class CoolifyClient {
       if (ok) n++;
     }
     return n;
+  }
+
+  /** Best-effort copy of environment variables between two live resources (the
+   * source and destination may be different kinds, e.g. app -> service). */
+  async copyEnvVars(
+    srcKind: "applications" | "services",
+    srcUuid: string,
+    destKind: "applications" | "services",
+    destUuid: string,
+  ): Promise<number> {
+    return this.setEnvVars(destKind, destUuid, await this.getEnvVars(srcKind, srcUuid));
   }
 
   /** Poll a database resource until its container reports running (or timeout). */

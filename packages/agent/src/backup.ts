@@ -142,6 +142,7 @@ export async function runBackup(job: BackupJob, workDir: string, emit: Emit): Pr
     capturedAt: new Date().toISOString(),
     artifacts,
     provenance,
+    envEnc: job.envEnc,
     encrypted: job.encryption.enabled,
     destinationDir: job.destinationDir,
   };
