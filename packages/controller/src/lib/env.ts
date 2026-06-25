@@ -14,7 +14,7 @@ export const env = {
   // Master key (base64, 32 bytes) used to encrypt secrets at rest.
   masterKey: optional("MASTER_KEY"),
   // Agent image referenced by the manual install command + /install.sh.
-  agentImage: optional("AGENT_IMAGE", "ghcr.io/your-org/cbm-agent"),
+  agentImage: optional("AGENT_IMAGE", "ghcr.io/holo795/cbm-agent"),
   agentImageTag: optional("AGENT_IMAGE_TAG", "latest"),
   // URL agents should reach the controller at (may differ from the browser URL,
   // e.g. host.docker.internal in local dev). Falls back to authUrl.

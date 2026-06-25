@@ -27,8 +27,8 @@ export async function sendTestAlert(url: string): Promise<boolean> {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      content: "✅ Coolify Backup Manager — test notification. Webhook is working.",
-      text: "✅ Coolify Backup Manager — test notification. Webhook is working.",
+      content: "✅ CBM (Coolify Backup Manager) — test notification. Webhook is working.",
+      text: "✅ CBM (Coolify Backup Manager) — test notification. Webhook is working.",
     }),
   })
     .then((r) => r.ok)

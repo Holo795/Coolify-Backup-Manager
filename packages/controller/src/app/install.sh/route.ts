@@ -18,7 +18,7 @@ export async function GET() {
   const image = `${env.agentImage}:${env.agentImageTag}`;
 
   const script = `#!/bin/sh
-# Coolify Backup Manager — agent installer
+# CBM — Coolify Backup Manager — agent installer
 set -e
 
 CONTROLLER_URL="${base}"

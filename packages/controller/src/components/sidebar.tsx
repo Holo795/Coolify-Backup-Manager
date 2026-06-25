@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { DatabaseBackup, Github } from "lucide-react";
+import { Github } from "lucide-react";
 import { NAV } from "./nav";
 import { cn } from "@/lib/cn";
 
@@ -10,11 +10,8 @@ export function Sidebar() {
   const pathname = usePathname();
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r bg-card/40 md:flex">
-      <div className="flex h-14 items-center gap-2 border-b px-5">
-        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent text-accent-foreground">
-          <DatabaseBackup className="h-4 w-4" />
-        </div>
-        <span className="text-sm font-medium">Backup Manager</span>
+      <div className="flex h-14 items-center justify-center border-b px-5">
+        <span className="text-base font-semibold tracking-wide">CBM</span>
       </div>
       <nav className="flex flex-1 flex-col gap-0.5 p-3">
         {NAV.map((item) => {
@@ -39,7 +36,7 @@ export function Sidebar() {
       </nav>
       <div className="border-t p-3 text-xs text-muted-foreground">
         <a
-          href="https://github.com/Holo795/Coolify-Backup-Manager"
+          href="https://github.com/Holo795/CBMCoolifyBackup"
           target="_blank"
           rel="noreferrer noopener"
           className="flex items-center gap-1.5 hover:text-foreground"
@@ -49,7 +46,7 @@ export function Sidebar() {
             Built by <span className="font-medium text-foreground">Holo795</span>
           </span>
         </a>
-        <p className="mt-1 text-[10px]">Coolify Backup Manager · Apache-2.0</p>
+        <p className="mt-1 text-[10px]">CBM · Coolify Backup Manager · Apache-2.0</p>
       </div>
     </aside>
   );

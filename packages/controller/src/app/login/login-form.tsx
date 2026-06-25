@@ -42,7 +42,7 @@ export function LoginForm({ needsSetup, hasGithub }: { needsSetup: boolean; hasG
           <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-lg bg-accent text-accent-foreground">
             <DatabaseBackup className="h-6 w-6" />
           </div>
-          <CardTitle>Coolify Backup Manager</CardTitle>
+          <CardTitle>CBM — Coolify Backup Manager</CardTitle>
           <p className="text-sm text-muted-foreground">
             {needsSetup ? "Create the admin account — this first account is the administrator." : "Sign in to continue"}
           </p>

@@ -1,4 +1,4 @@
-// Coolify Backup Manager — controller metadata schema (Prisma 7).
+// CBM — Coolify Backup Manager — controller metadata schema (Prisma 7).
 
 generator client {
   provider = "prisma-client"

@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in improving **Coolify Backup Manager**! Contributions of all
+Thanks for your interest in improving **CBM — Coolify Backup Manager**! Contributions of all
 kinds are welcome — bug reports, fixes, features, and docs.
 
 By contributing, you agree that your contributions are licensed under the project's
@@ -51,6 +51,13 @@ npx tsc --noEmit                     # type-check the controller
   `packages/controller/prisma/migrations/` (the deploy step runs `prisma migrate deploy`).
 - If you change the agent/controller contract, update `@cbm/shared` and rebuild it.
 - Update the README if you change user-facing behavior or add/remove a limitation.
+
+## Documentation
+
+The detailed docs live in **[`/docs`](docs/)** (versioned with the code — there is no separate
+GitHub Wiki). When you change user-facing behavior, update the relevant page(s) in `/docs` in the
+same PR, and the [README](README.md) if it affects the overview or limitations. Screenshots used
+by the README/docs live in `docs/screenshots/`.
 
 ## Reporting bugs
 

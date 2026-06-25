@@ -1,8 +1,14 @@
-# Production deployment (e.g. on Coolify): controller + its Postgres.
-# Deploy one agent per Docker host separately (see Dockerfile.agent / README).
+# Run CBM — Coolify Backup Manager — from the published images.
+# This starts the controller + its Postgres. Install one agent per Docker host
+# separately (the controller gives you a one-line install command per instance).
+#
+#   1. cp .env.example .env   &&  fill BETTER_AUTH_SECRET + MASTER_KEY + BETTER_AUTH_URL
+#   2. docker compose up -d
+#   3. open the URL and create the first account (it becomes the admin)
 services:
   db:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: cbm
       POSTGRES_PASSWORD: ${DB_PASSWORD:-cbm}
@@ -16,9 +22,8 @@ services:
       retries: 10
 
   controller:
-    build:
-      context: .
-      dockerfile: Dockerfile.controller
+    image: ghcr.io/holo795/cbm-controller:latest
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
@@ -26,12 +31,11 @@ services:
       DATABASE_URL: postgresql://cbm:${DB_PASSWORD:-cbm}@db:5432/cbm
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set a long random secret}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
-      MASTER_KEY: ${MASTER_KEY:-}
-      # Image the install command / /install.sh tells hosts to run.
+      MASTER_KEY: ${MASTER_KEY:?generate a base64 32-byte key — see .env.example}
       AGENT_IMAGE: ${AGENT_IMAGE:-ghcr.io/holo795/cbm-agent}
       AGENT_IMAGE_TAG: ${AGENT_IMAGE_TAG:-latest}
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
 
 volumes:
   cbm-db:

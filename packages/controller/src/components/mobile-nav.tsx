@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X, DatabaseBackup, Github } from "lucide-react";
+import { Menu, X, Github } from "lucide-react";
 import { NAV } from "./nav";
 import { cn } from "@/lib/cn";
 
@@ -28,12 +28,7 @@ export function MobileNav() {
           <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} aria-hidden />
           <aside className="absolute left-0 top-0 flex h-full w-64 max-w-[80%] flex-col border-r bg-card">
             <div className="flex h-14 items-center justify-between border-b px-4">
-              <span className="flex items-center gap-2">
-                <span className="flex h-7 w-7 items-center justify-center rounded-md bg-accent text-accent-foreground">
-                  <DatabaseBackup className="h-4 w-4" />
-                </span>
-                <span className="text-sm font-medium">Backup Manager</span>
-              </span>
+              <span className="text-base font-semibold tracking-wide">CBM</span>
               <button
                 aria-label="Close menu"
                 className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
@@ -66,7 +61,7 @@ export function MobileNav() {
             </nav>
             <div className="border-t p-3 text-xs text-muted-foreground">
               <a
-                href="https://github.com/Holo795/Coolify-Backup-Manager"
+                href="https://github.com/Holo795/CBMCoolifyBackup"
                 target="_blank"
                 rel="noreferrer noopener"
                 className="flex items-center gap-1.5 hover:text-foreground"

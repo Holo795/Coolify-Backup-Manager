@@ -14,7 +14,7 @@ export function Topbar({ email }: { email: string }) {
       <div className="flex items-center gap-2">
         <MobileNav />
         <button
-          className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
+          className="flex w-36 sm:w-64 items-center justify-between rounded-md border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground bg-muted/50"
           onClick={() => {
             const ev = new KeyboardEvent("keydown", { key: "k", metaKey: true });
             window.dispatchEvent(ev);
