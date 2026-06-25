@@ -101,8 +101,15 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           OWNER="${GITHUB_REPOSITORY_OWNER,,}"
-          BODY="$(gh release view "$GITHUB_REF_NAME" --json body --jq .body 2>/dev/null)" \
-            || { echo "No release for $GITHUB_REF_NAME yet — skipping."; exit 0; }
+          # The release is often created around the same time as the tag push;
+          # retry a few times so a transient API miss doesn't skip the append.
+          BODY=""; found=""
+          for i in $(seq 1 6); do
+            if BODY="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json body --jq .body)"; then found=1; break; fi
+            echo "Release $GITHUB_REF_NAME not visible yet (attempt $i) — retrying in 10s…"
+            sleep 10
+          done
+          [ -n "$found" ] || { echo "No release for $GITHUB_REF_NAME — skipping."; exit 0; }
           case "$BODY" in
             *"<!-- cbm:images -->"*) echo "Images section already present — skipping."; exit 0 ;;
           esac
@@ -123,5 +130,5 @@ jobs:
           EOF
           sed -i "s|__VERSION__|$VERSION|g; s|__MM__|${VERSION%.*}|g; s|__OWNER__|$OWNER|g; s|__REPO__|$GITHUB_REPOSITORY|g" /tmp/images.md
           { printf '%s\n' "$BODY"; cat /tmp/images.md; } > /tmp/body.md
-          gh release edit "$GITHUB_REF_NAME" --notes-file /tmp/body.md
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file /tmp/body.md
           echo "Appended Images section to $GITHUB_REF_NAME."
