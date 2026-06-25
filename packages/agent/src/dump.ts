@@ -1,3 +1,4 @@
+import { open, stat } from "node:fs/promises";
 import type { ResourceType, DbCredentials } from "@cbm/shared";
 import { docker, dockerToFile, dockerFromFile } from "./docker.js";
 
@@ -73,6 +74,18 @@ export async function dumpRedis(container: string, password: string | undefined,
       "(command -v keydb-cli >/dev/null 2>&1 && keydb-cli --no-auth-warning --rdb -)",
   );
   await dockerToFile(args, outFile);
+  // `redis-cli --rdb -` can exit 0 while streaming a truncated/empty payload on
+  // some error paths. Validate the RDB magic so a useless dump can't be treated
+  // as success (the caller then falls back to a frozen volume copy).
+  if ((await stat(outFile)).size < 9) throw new Error("Redis RDB export is empty");
+  const fh = await open(outFile, "r");
+  try {
+    const buf = Buffer.alloc(5);
+    await fh.read(buf, 0, 5, 0);
+    if (buf.toString("latin1") !== "REDIS") throw new Error("Redis RDB export has an invalid header");
+  } finally {
+    await fh.close();
+  }
 }
 
 /** Create an empty database (used by restore-to-new for engines that support it). */

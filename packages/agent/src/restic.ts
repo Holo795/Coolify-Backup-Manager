@@ -45,14 +45,25 @@ export function restic(args: string[], env: NodeJS.ProcessEnv): Promise<ResticRu
   });
 }
 
+// Serialise repo initialisation per repository so concurrent jobs (the agent
+// runs several at once) don't race to `restic init` a brand-new repo.
+const ensuring = new Map<string, Promise<void>>();
+
 /** Initialise the repo if it doesn't exist yet (idempotent, race-safe). */
 export async function resticEnsureRepo(env: NodeJS.ProcessEnv): Promise<void> {
-  const check = await restic(["cat", "config", "--no-lock"], env);
-  if (check.code === 0) return;
-  const init = await restic(["init"], env);
-  if (init.code !== 0 && !/already initialized|already exists/i.test(init.stderr)) {
-    throw new Error(`restic init failed: ${init.stderr.slice(0, 500)}`);
-  }
+  const repo = env.RESTIC_REPOSITORY ?? "";
+  const existing = ensuring.get(repo);
+  if (existing) return existing;
+  const p = (async () => {
+    const check = await restic(["cat", "config", "--no-lock"], env);
+    if (check.code === 0) return;
+    const init = await restic(["init"], env);
+    if (init.code !== 0 && !/already initialized|already exists|config already/i.test(init.stderr)) {
+      throw new Error(`restic init failed: ${init.stderr.slice(0, 500)}`);
+    }
+  })().finally(() => ensuring.delete(repo));
+  ensuring.set(repo, p);
+  return p;
 }
 
 /**

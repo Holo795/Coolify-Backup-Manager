@@ -51,29 +51,35 @@ export async function applyRetention(policyId: string): Promise<{ deleted: numbe
         agentId: string | null;
         dirs: string[];
         resticSnapshotIds: string[];
+        snapshotIds: string[];
       }
     >();
     for (const s of toDelete) {
       const agentId = s.destination.type === "local" ? s.agentId : null;
       const key = `${s.destinationId}::${agentId ?? ""}`;
-      const g = byGroup.get(key) ?? { destination: s.destination, agentId, dirs: [], resticSnapshotIds: [] };
+      const g = byGroup.get(key) ?? { destination: s.destination, agentId, dirs: [], resticSnapshotIds: [], snapshotIds: [] };
       g.dirs.push(s.destinationDir);
+      g.snapshotIds.push(s.id);
       if (s.resticSnapshotId) g.resticSnapshotIds.push(s.resticSnapshotId);
       byGroup.set(key, g);
     }
     for (const g of byGroup.values()) {
-      await enqueuePrune({
+      // Only drop the DB rows once the agent has actually been handed the delete:
+      // if no agent is available (enqueue returns null) or it throws, keep the
+      // rows so the files aren't orphaned and retention retries next run.
+      const queued = await enqueuePrune({
         instanceId: r.instanceId,
         destination: g.destination,
         dirs: g.dirs,
         resticSnapshotIds: g.resticSnapshotIds,
         agentId: g.agentId,
-      }).catch((e) => console.warn(`[retention] prune enqueue failed: ${(e as Error).message}`));
-    }
-
-    for (const s of toDelete) {
-      await prisma.snapshot.delete({ where: { id: s.id } });
-      deleted++;
+      }).catch((e) => {
+        console.warn(`[retention] prune enqueue failed: ${(e as Error).message}`);
+        return null;
+      });
+      if (!queued) continue;
+      await prisma.snapshot.deleteMany({ where: { id: { in: g.snapshotIds } } });
+      deleted += g.snapshotIds.length;
     }
   }
   return { deleted };

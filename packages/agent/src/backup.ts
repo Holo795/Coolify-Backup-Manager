@@ -153,16 +153,17 @@ export async function runBackup(job: BackupJob, workDir: string, emit: Emit): Pr
     }
   };
 
+  try {
   // Pre-backup hook: run inside the primary container; a failure aborts the
-  // backup (the operator wanted the app quiesced first). The post hook always
-  // runs afterwards (see the finally below), even if the backup fails.
+  // backup (the operator wanted the app quiesced first). It runs INSIDE the try
+  // so the post hook (finally below) still runs to undo it — e.g. bring an app
+  // back out of maintenance even when the pre hook or the backup failed.
   if (job.hooks?.pre && primary && (await containerExists(primary))) {
     emit("info", `Running pre-backup hook in ${primary}`, 5);
     const r = await execShell(primary, job.hooks.pre);
     if (r.code !== 0) throw new Error(`pre-backup hook failed (exit ${r.code}): ${r.stderr.slice(0, 300)}`);
   }
 
-  try {
   if (isCoolifySelf) {
     // Coolify control plane: logical dump of its Postgres + live tar of /data/coolify.
     if (!primary) throw new Error("Coolify self-backup could not locate the Coolify database container");
@@ -300,7 +301,7 @@ export async function runBackup(job: BackupJob, workDir: string, emit: Emit): Pr
       const r = await execShell(primary, job.hooks.post).catch((e) => ({ code: -1, stdout: "", stderr: (e as Error).message }));
       if (r.code !== 0) emit("warn", `post-backup hook failed (exit ${r.code}): ${r.stderr.slice(0, 300)}`);
     }
-    await rm(stage, { recursive: true, force: true });
+    await rm(stage, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 

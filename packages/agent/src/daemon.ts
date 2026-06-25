@@ -55,7 +55,7 @@ export async function startDaemon(): Promise<void> {
   };
 
   for (;;) {
-    let pickedUp = false;
+    // Fill free slots until the queue is empty or we're at capacity.
     while (inFlight.size < cfg.concurrency) {
       let job = null;
       try {
@@ -65,14 +65,14 @@ export async function startDaemon(): Promise<void> {
         break;
       }
       if (!job) break;
-      pickedUp = true;
       startJob(job);
     }
+    // After the fill loop the queue is empty or we're full. Either way, wait for
+    // a job to finish (frees a slot) or a poll tick before polling again — never
+    // spin. With nothing running, just sleep the poll interval.
     if (inFlight.size === 0) {
       await sleep(cfg.pollIntervalMs);
-    } else if (!pickedUp) {
-      // Slots full or queue empty: wait for a job to finish or a short tick,
-      // then poll again.
+    } else {
       await Promise.race([Promise.race([...inFlight]), sleep(cfg.pollIntervalMs)]);
     }
   }

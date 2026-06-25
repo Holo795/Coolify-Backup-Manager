@@ -25,8 +25,18 @@ Made by **[Holo795](https://github.com/Holo795)** · Licensed under **Apache-2.0
 - **Restore → new.** Recreate any resource type as a brand-new Coolify resource (the
   original is never touched): databases, git apps (commit re-pinned), docker-image apps
   (exact tag/digest), and docker-compose services (volumes re-mapped to the clone).
+- **Logical exports, even inside services.** Standalone databases are dumped live; Redis/
+  KeyDB/Dragonfly are snapshotted via an RDB export (no freeze); and a database living
+  *inside* a docker-compose service (e.g. the Postgres in n8n) gets its own logical dump on
+  top of the volume copy — application-consistent and restorable across engine versions.
 - **Multiple destinations** — local folder, SSH/SFTP, or S3 — with optional AES-256-GCM
   encryption at rest.
+- **Incremental & deduplicated storage (restic).** Pick the **restic** engine per destination
+  (local or S3): only changed data is uploaded each run, the repository is encrypted, and
+  retention is delegated to restic. Restore works in place and to a new resource.
+- **Runs in parallel, with hooks.** Each agent processes several jobs at once
+  (`AGENT_CONCURRENCY`), and you can set per-resource **pre/post-backup commands** (e.g. put
+  an app in maintenance, flush a cache) that run inside the container.
 - **Multi-server instances.** A Coolify panel can manage several servers; install one agent
   per server and each backup is routed to the agent on the resource's server automatically
   (each server gets its own schedule). Local-folder destinations are per agent — every server
@@ -36,7 +46,8 @@ Made by **[Holo795](https://github.com/Holo795)** · Licensed under **Apache-2.0
   so you find out before a restore needs them.
 - **Self-contained snapshots** — environment variables and host **bind mounts** are captured
   too, and a backup is verified at the destination right after upload.
-- **Failure & missing-backup alerts** via a generic webhook (Discord / Slack / custom).
+- **Failure, missing & overdue-backup alerts** via a generic webhook (Discord / Slack /
+  custom) — including scheduled backups that never ran (controller down, no agent on a server).
 - **Scheduling** with grandfather-father-son retention, evaluated in a **configurable
   timezone** (Settings page).
 
@@ -67,10 +78,16 @@ For each resource, the agent **never stops a container**:
 1. **Standalone databases** (PostgreSQL, MySQL, MariaDB, MongoDB) → a logical dump while
    running. No freeze, no downtime, application-consistent. Credentials are read from the
    live container / Coolify API and never stored in the manifest.
-2. **Everything else** (apps, services, and the databases *inside* a service, Redis, file
-   volumes) → for each volume, the agent freezes only the running containers that mount it
-   **read-write**, archives the volume, and resumes them. Read-only mounts and resources
-   with no volumes are never touched.
+2. **Redis / KeyDB / Dragonfly** → a live RDB export (no freeze), falling back to a frozen
+   volume copy only if no compatible CLI is present.
+3. **Apps & services** → for each volume, the agent freezes only the running containers that
+   mount it **read-write**, archives the volume, and resumes them (read-only mounts and
+   volumeless resources are untouched). Any database living *inside* a service additionally
+   gets its own logical dump, so the restore can be application-consistent and version-portable.
+
+The post-capture storage is chosen per destination: the **tar** engine writes one file per
+artifact; the **restic** engine stores everything in an incremental, deduplicated, encrypted
+repository (local or S3).
 
 Per resource you can opt into **"live, no freeze"** — copy volumes with zero interruption,
 accepting that a file rewritten exactly during the copy could be inconsistent.
@@ -88,9 +105,9 @@ accepting that a file rewritten exactly during the copy could be inconsistent.
 | Resource | Captured |
 | --- | --- |
 | PostgreSQL / MySQL / MariaDB / MongoDB | logical dump (live) |
-| Redis / KeyDB / other databases | data volume (frozen copy) |
+| Redis / KeyDB / Dragonfly | RDB export (live), with a frozen-volume fallback |
 | Applications | named volumes + Git commit / image provenance |
-| Compose services | every named volume of the stack (incl. its internal DB) |
+| Compose services | every named volume + a logical dump of each database inside the stack |
 
 ## Known limitations
 
@@ -104,12 +121,14 @@ Being upfront so you don't lose data by surprise. Contributions welcome.
 - **Server auto-detection needs a hint.** An agent figures out which Coolify server it backs
   up from the resources it can see locally; if it can't yet (a brand-new, empty host), assign
   its server by hand on the **Agents** page (or set `AGENT_SERVER_UUID`).
-- **No incremental backup yet** — each run copies the whole volume (slow / storage-heavy for
-  large data).
+- **Incremental storage is restic-only, local/S3-only.** The default (tar) engine copies the
+  whole volume each run. The **restic** engine deduplicates and only uploads changed data, but
+  is offered for local and S3 destinations (not SSH/SFTP).
 - **No automatic restore verification** — artifacts are checksummed and the destination is
   reconciled, but backups are not test-restored.
 - Volume copies are **crash-consistent** (the app recovers), not application-consistent; an
-  in-service database restored from its volume is version-locked to the same engine version.
+  in-service database restored from its volume is version-locked to the same engine version
+  (use the logical dump that's captured alongside it for a portable restore).
 
 ## Quick start (development)
 

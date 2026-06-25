@@ -36,7 +36,11 @@ export async function runRestore(job: RestoreJob, workDir: string, emit: Emit): 
       emit("info", `Fetching restic snapshot ${job.resticSnapshotId}`, 20);
       const env = resticEnv(job.source, job.storage.resticPassword);
       const dir = await resticRestoreById(env, job.resticSnapshotId, join(stage, "restic"));
-      for (const a of manifest.artifacts) localFiles[a.filename] = join(dir, a.filename);
+      for (const a of manifest.artifacts) {
+        // restic repos are encrypted natively, so artifacts are never AES-wrapped.
+        if (a.encrypted) throw new Error(`Encrypted artifact ${a.filename} in a restic snapshot is unexpected`);
+        localFiles[a.filename] = join(dir, a.filename);
+      }
     } else {
       let i = 0;
       for (const a of manifest.artifacts) {

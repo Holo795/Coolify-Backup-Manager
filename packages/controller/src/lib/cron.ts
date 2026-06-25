@@ -20,6 +20,26 @@ function parseField(field: string, min: number, max: number): Set<number> {
   return out;
 }
 
+// Constructing an Intl.DateTimeFormat is relatively expensive; the missed-backup
+// scan calls partsInZone tens of thousands of times, so cache one per timezone.
+const fmtCache = new Map<string, Intl.DateTimeFormat>();
+function zoneFormatter(timeZone: string): Intl.DateTimeFormat {
+  let fmt = fmtCache.get(timeZone);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour12: false,
+      minute: "2-digit",
+      hour: "2-digit",
+      day: "2-digit",
+      month: "2-digit",
+      weekday: "short",
+    });
+    fmtCache.set(timeZone, fmt);
+  }
+  return fmt;
+}
+
 /** Wall-clock parts of `date` as seen in the given IANA timezone. */
 function partsInZone(date: Date, timeZone: string): {
   minute: number;
@@ -28,15 +48,7 @@ function partsInZone(date: Date, timeZone: string): {
   month: number;
   dow: number;
 } {
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hour12: false,
-    minute: "2-digit",
-    hour: "2-digit",
-    day: "2-digit",
-    month: "2-digit",
-    weekday: "short",
-  });
+  const fmt = zoneFormatter(timeZone);
   const p: Record<string, string> = {};
   for (const part of fmt.formatToParts(date)) p[part.type] = part.value;
   const dows: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
@@ -93,6 +105,11 @@ export function isValidCron(expr: string): boolean {
  * Most recent time `expr` should have fired at or before `now` (evaluated in
  * `timeZone`), scanning back minute-by-minute up to `maxDays`. Returns null if
  * the schedule hasn't fired within that window. Used to detect missed backups.
+ *
+ * Note: on a spring-forward DST day a wall-clock minute that the cron targets
+ * (e.g. 02:30 when the clock jumps 02:00→03:00) doesn't exist, so the scan finds
+ * the previous valid fire instead — the missed-backup alert may be a day late
+ * for that one schedule on that one day. Acceptable for an alerting heuristic.
  */
 export function previousFireWithin(expr: string, now: Date, timeZone = "UTC", maxDays = 40): Date | null {
   if (!isValidCron(expr)) return null;
