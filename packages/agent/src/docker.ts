@@ -2,29 +2,18 @@ import { spawn } from "node:child_process";
 import { createWriteStream, createReadStream } from "node:fs";
 import { once } from "node:events";
 import { pipeline } from "node:stream/promises";
+import { runCapture, type RunResult } from "./proc.js";
 
 let DOCKER = "docker";
 export function setDockerBin(bin: string) {
   DOCKER = bin;
 }
 
-export interface RunResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
+export type { RunResult };
 
 /** Run a docker command, buffering stdout/stderr as strings. */
 export function docker(args: string[]): Promise<RunResult> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(DOCKER, args, { stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (d) => (stdout += d.toString()));
-    child.stderr.on("data", (d) => (stderr += d.toString()));
-    child.on("error", reject);
-    child.on("close", (code) => resolve({ code: code ?? -1, stdout, stderr }));
-  });
+  return runCapture(DOCKER, args);
 }
 
 /** Run a docker command and stream stdout into a file (for dumps). */
@@ -48,12 +37,14 @@ export async function dockerToFile(args: string[], outFile: string): Promise<voi
 export async function dockerFromFile(args: string[], inFile: string): Promise<void> {
   const child = spawn(DOCKER, args, { stdio: ["pipe", "pipe", "pipe"] });
   let stderr = "";
-  let stdout = "";
   child.stderr.on("data", (d) => (stderr += d.toString()));
-  child.stdout.on("data", (d) => (stdout += d.toString()));
-  const input = createReadStream(inFile);
-  input.pipe(child.stdin);
-  const [code] = (await once(child, "close")) as [number];
+  child.stdout.on("data", () => {}); // drain so a full pipe can't block the child
+  // Capture the exit code independently of the stdin write. If the child closes
+  // its stdin early (e.g. it rejected the input) the write side gets EPIPE — we
+  // swallow it so the authoritative error stays the exit code + buffered stderr.
+  const exit = once(child, "close") as Promise<[number]>;
+  await pipeline(createReadStream(inFile), child.stdin).catch(() => undefined);
+  const [code] = await exit;
   if (code !== 0) {
     throw new Error(`docker ${args.join(" ")} exited ${code}: ${stderr.slice(0, 2000)}`);
   }

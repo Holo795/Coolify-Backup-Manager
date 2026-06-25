@@ -13,8 +13,8 @@ import {
 import { REDIS_ENGINES, type Engine } from "./engines.js";
 import { decryptFile } from "./crypto.js";
 import { makeTransfer } from "./transfer.js";
-import { resticContext, resticRestoreById } from "./restic.js";
-import { resolveResource, readDbCredentials } from "./resolve.js";
+import { resticRestoreById, withResticCtx } from "./restic.js";
+import { resolveResource, readDbCredentials, resourceContainers } from "./resolve.js";
 import type { Emit } from "./backup.js";
 
 export async function runRestore(job: RestoreJob, workDir: string, emit: Emit): Promise<void> {
@@ -34,13 +34,9 @@ export async function runRestore(job: RestoreJob, workDir: string, emit: Emit): 
         throw new Error("restic restore requires the repository password and a snapshot id");
       }
       emit("info", `Fetching restic snapshot ${job.resticSnapshotId}`, 20);
-      const ctx = await resticContext(job.source, job.storage.resticPassword);
-      let dir: string;
-      try {
-        dir = await resticRestoreById(ctx, job.resticSnapshotId, join(stage, "restic"));
-      } finally {
-        await ctx.cleanup();
-      }
+      const dir = await withResticCtx(job.source, job.storage.resticPassword, (ctx) =>
+        resticRestoreById(ctx, job.resticSnapshotId!, join(stage, "restic")),
+      );
       for (const a of manifest.artifacts) {
         // restic repos are encrypted natively, so artifacts are never AES-wrapped.
         if (a.encrypted) throw new Error(`Encrypted artifact ${a.filename} in a restic snapshot is unexpected`);
@@ -132,11 +128,7 @@ export async function runRestore(job: RestoreJob, workDir: string, emit: Emit): 
       }
     } else if (volumes.length > 0 || redisDumps.length > 0) {
       // in place: stop the resource, overwrite its volumes / drop the RDB, restart.
-      const containers = manifest.resource.containerNames.length
-        ? manifest.resource.containerNames
-        : manifest.resource.containerName
-          ? [manifest.resource.containerName]
-          : [];
+      const containers = resourceContainers(manifest.resource);
       const stopped: string[] = [];
       try {
         for (const c of containers) {

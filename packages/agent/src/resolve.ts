@@ -126,12 +126,7 @@ async function pickPrimary(containers: string[], type: ResourceType): Promise<st
 
 export async function readDbCredentials(container: string, type: ResourceType): Promise<DbCredentials | undefined> {
   const info = await inspectContainer(container);
-  const envArr: string[] = info?.Config?.Env ?? [];
-  const env: Record<string, string> = {};
-  for (const e of envArr) {
-    const i = e.indexOf("=");
-    if (i > 0) env[e.slice(0, i)] = e.slice(i + 1);
-  }
+  const env = parseEnv(info?.Config?.Env ?? []);
   switch (type) {
     case "redis":
     case "keydb":
@@ -167,11 +162,10 @@ export async function readDbCredentials(container: string, type: ResourceType): 
   }
 }
 
-/** Volume names (named docker volumes) a container mounts. */
-export async function containerVolumes(container: string): Promise<string[]> {
-  const info = await inspectContainer(container);
-  const mounts: Array<{ Type?: string; Name?: string }> = info?.Mounts ?? [];
-  return mounts.filter((m) => m?.Type === "volume" && m.Name).map((m) => m.Name as string);
+/** A resource's container names: the explicit list if present, else the single
+ *  primary container, else none. */
+export function resourceContainers(r: { containerNames: string[]; containerName?: string }): string[] {
+  return r.containerNames.length ? r.containerNames : r.containerName ? [r.containerName] : [];
 }
 
 /** Detect database engines among a resource's containers (e.g. the Postgres

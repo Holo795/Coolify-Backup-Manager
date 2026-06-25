@@ -1,19 +1,15 @@
-import { spawn } from "node:child_process";
 import { readdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import type { ResolvedDestination } from "@cbm/shared";
+import { runCapture, type RunResult } from "./proc.js";
 
 let RESTIC = "restic";
 export function setResticBin(bin: string) {
   RESTIC = bin;
 }
 
-export interface ResticRun {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
+export type ResticRun = RunResult;
 
 /**
  * Everything needed to run restic against one destination: the repo URL + auth
@@ -63,11 +59,9 @@ export async function resticContext(dest: ResolvedDestination, password: string)
   // command (key via -i, password via sshpass -f, bastion via a nested
   // ProxyCommand) and hand it to restic as `-o sftp.command=…`.
   const tmp = await mkdtemp(join(tmpdir(), "cbm-restic-"));
-  const written: string[] = [];
   const secretFile = async (name: string, content: string, withNewline: boolean) => {
     const p = join(tmp, name);
     await writeFile(p, withNewline && !content.endsWith("\n") ? `${content}\n` : content, { mode: 0o600 });
-    written.push(p);
     return p;
   };
   const knownHosts = await secretFile("known_hosts", "", false);
@@ -118,7 +112,6 @@ export async function resticContext(dest: ResolvedDestination, password: string)
   // restic only the script's (space-free) path.
   const connect = join(tmp, "connect.sh");
   await writeFile(connect, `#!/bin/sh\nexec ${sftpTokens.map(shq).join(" ")}\n`, { mode: 0o700 });
-  written.push(connect);
 
   env.RESTIC_REPOSITORY = `sftp:${dest.username}@${dest.host}:${posix.join(dest.basePath, "restic-repo")}`;
   return {
@@ -126,22 +119,31 @@ export async function resticContext(dest: ResolvedDestination, password: string)
     args: ["-o", `sftp.command=${connect}`],
     cleanup: async () => {
       await rm(tmp, { recursive: true, force: true }).catch(() => undefined);
-      void written;
     },
   };
 }
 
+/**
+ * Build a restic context for a destination, run `fn` with it, and always clean
+ * up the temp key/password files afterwards. Use this instead of calling
+ * `resticContext` + `cleanup()` by hand so cleanup can't be forgotten.
+ */
+export async function withResticCtx<T>(
+  dest: ResolvedDestination,
+  password: string,
+  fn: (ctx: ResticCtx) => Promise<T>,
+): Promise<T> {
+  const ctx = await resticContext(dest, password);
+  try {
+    return await fn(ctx);
+  } finally {
+    await ctx.cleanup();
+  }
+}
+
 /** Run a restic command, buffering stdout/stderr. Global ctx args come first. */
 export function restic(ctx: ResticCtx, args: string[]): Promise<ResticRun> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(RESTIC, [...ctx.args, ...args], { env: ctx.env, stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    child.stdout!.on("data", (d) => (stdout += d.toString()));
-    child.stderr!.on("data", (d) => (stderr += d.toString()));
-    child.on("error", reject);
-    child.on("close", (code) => resolve({ code: code ?? -1, stdout, stderr }));
-  });
+  return runCapture(RESTIC, [...ctx.args, ...args], { env: ctx.env });
 }
 
 // Serialise repo initialisation per repository so concurrent jobs (the agent

@@ -7,6 +7,8 @@ import {
 import { createReadStream, createWriteStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { once } from "node:events";
+import { pipeline } from "node:stream/promises";
+import type { Writable } from "node:stream";
 
 const IV_LEN = 12;
 const TAG_LEN = 16;
@@ -40,15 +42,17 @@ export async function encryptFile(src: string, dest: string, keyB64: string): Pr
   const iv = randomBytes(IV_LEN);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
   const out = createWriteStream(dest);
-  out.write(iv);
-  const rs = createReadStream(src);
-  for await (const chunk of rs) {
-    out.write(cipher.update(chunk as Buffer));
-  }
-  out.write(cipher.final());
-  out.write(cipher.getAuthTag());
-  out.end();
-  await once(out, "close");
+  // The cipher is a Transform stream; piping through it gives correct
+  // backpressure and error propagation (important for multi-GB volume tarballs).
+  await writeChunk(out, iv); // IV header before the ciphertext
+  await pipeline(createReadStream(src), cipher, out, { end: false });
+  await writeChunk(out, cipher.getAuthTag()); // GCM tag trailer, valid after final()
+  await new Promise<void>((resolve, reject) => out.end((err?: Error | null) => (err ? reject(err) : resolve())));
+}
+
+/** Write one buffer to a stream, honouring backpressure and surfacing errors. */
+function writeChunk(out: Writable, buf: Buffer): Promise<void> {
+  return new Promise((resolve, reject) => out.write(buf, (err) => (err ? reject(err) : resolve())));
 }
 
 /**
@@ -64,14 +68,13 @@ export async function decryptFile(src: string, dest: string, keyB64: string): Pr
   const decipher = createDecipheriv("aes-256-gcm", key, iv);
   decipher.setAuthTag(tag);
 
-  const out = createWriteStream(dest);
-  const rs = createReadStream(src, { start: IV_LEN, end: size - TAG_LEN - 1 });
-  for await (const chunk of rs) {
-    out.write(decipher.update(chunk as Buffer));
-  }
-  out.write(decipher.final());
-  out.end();
-  await once(out, "close");
+  // Stream the ciphertext (between IV and tag) through the decipher with proper
+  // backpressure; decipher.final() throws on a tag mismatch, rejecting pipeline.
+  await pipeline(
+    createReadStream(src, { start: IV_LEN, end: size - TAG_LEN - 1 }),
+    decipher,
+    createWriteStream(dest),
+  );
 }
 
 async function readRange(path: string, start: number, end: number): Promise<Buffer> {

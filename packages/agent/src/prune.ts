@@ -1,7 +1,7 @@
 import { posix } from "node:path";
 import type { PruneJob } from "@cbm/shared";
 import { makeTransfer, type Transfer } from "./transfer.js";
-import { resticContext, resticForget } from "./restic.js";
+import { resticForget, withResticCtx } from "./restic.js";
 import type { Emit } from "./backup.js";
 
 /**
@@ -27,12 +27,7 @@ export async function runPrune(job: PruneJob, emit: Emit): Promise<void> {
     if (ids.length === 0) return;
     if (!job.storage.resticPassword) throw new Error("restic prune requires the repository password");
     emit("info", `Forgetting ${ids.length} restic snapshot(s) and pruning`, 10);
-    const ctx = await resticContext(job.destination, job.storage.resticPassword);
-    try {
-      await resticForget(ctx, ids);
-    } finally {
-      await ctx.cleanup();
-    }
+    await withResticCtx(job.destination, job.storage.resticPassword, (ctx) => resticForget(ctx, ids));
     emit("info", "Prune complete", 100);
     return;
   }

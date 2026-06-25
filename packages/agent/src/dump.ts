@@ -1,11 +1,6 @@
 import { open, stat } from "node:fs/promises";
 import type { ResourceType, DbCredentials } from "@cbm/shared";
-import { docker, dockerToFile, dockerFromFile } from "./docker.js";
-
-/** Map a resource type to the dump engine label stored in the manifest. */
-export function dumpEngine(type: ResourceType): string {
-  return type;
-}
+import { dockerToFile, dockerFromFile } from "./docker.js";
 
 /** Produce a logical dump of a database container into outFile. */
 export async function dumpDatabase(
@@ -86,30 +81,6 @@ export async function dumpRedis(container: string, password: string | undefined,
   } finally {
     await fh.close();
   }
-}
-
-/** Create an empty database (used by restore-to-new for engines that support it). */
-export async function createDatabase(
-  type: ResourceType,
-  container: string,
-  db: DbCredentials,
-  newName: string,
-): Promise<void> {
-  const user = db.user ?? "";
-  const password = db.password ?? "";
-  if (type === "postgresql") {
-    const args = ["exec"];
-    if (password) args.push("-e", `PGPASSWORD=${password}`);
-    args.push(container, "psql", "-U", user || "postgres", "-d", "postgres", "-c", `CREATE DATABASE "${newName}"`);
-    const r = await docker(args);
-    if (r.code !== 0) throw new Error(`create database failed: ${r.stderr}`);
-    return;
-  }
-  if (type === "mongodb") {
-    // MongoDB creates databases lazily; nothing to do.
-    return;
-  }
-  throw new Error(`Restore-to-new is not supported for ${type} (the dump pins the database name)`);
 }
 
 /** Restore a logical dump into a running database container. */

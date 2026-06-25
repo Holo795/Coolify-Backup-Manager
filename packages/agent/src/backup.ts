@@ -11,7 +11,7 @@ import {
   MANIFEST_FILE,
   CONFIG_FILE,
 } from "@cbm/shared";
-import { dumpDatabase, dumpEngine, dumpRedis } from "./dump.js";
+import { dumpDatabase, dumpRedis } from "./dump.js";
 import { REDIS_ENGINES, isRedisEngine, type Engine } from "./engines.js";
 import {
   tarVolume,
@@ -26,8 +26,8 @@ import {
 import { captureProvenance } from "./provenance.js";
 import { encryptFile, sha256File } from "./crypto.js";
 import { makeTransfer } from "./transfer.js";
-import { resticContext, resticEnsureRepo, resticBackupDir } from "./restic.js";
-import { resolveResource, findDbContainers, readDbCredentials } from "./resolve.js";
+import { resticEnsureRepo, resticBackupDir, withResticCtx } from "./restic.js";
+import { resolveResource, findDbContainers, readDbCredentials, resourceContainers } from "./resolve.js";
 
 export type Emit = (level: "debug" | "info" | "warn" | "error", message: string, progress?: number) => void;
 
@@ -42,11 +42,7 @@ export async function runBackup(job: BackupJob, workDir: string, emit: Emit): Pr
   const liveBackup = job.liveBackup;
   const artifacts: Artifact[] = [];
   const isDb = DUMPABLE_DB_TYPES.includes(resource.type);
-  const containers = resource.containerNames.length
-    ? resource.containerNames
-    : resource.containerName
-      ? [resource.containerName]
-      : [];
+  const containers = resourceContainers(resource);
   // What the agent actually did, recorded in the manifest for display.
   let captureMethod = "none";
 
@@ -71,49 +67,51 @@ export async function runBackup(job: BackupJob, workDir: string, emit: Emit): Pr
   // container: briefly freeze (docker pause) only the running container(s) that
   // write to each one, unless liveBackup is set. Returns the capture method.
   const copyVolumesAndBinds = async (): Promise<string> => {
-    const total = resource.volumes.length + resource.bindMounts.length;
+    // Named volumes and host-path (bind) mounts are archived the same way; they
+    // only differ in what to freeze and the artifact meta. Normalise both into a
+    // single list so the freeze/archive/resume dance lives in one loop.
+    // `tarVolume` mounts the given path, so it works for host bind sources too.
+    const targets: Array<{
+      source: string;
+      fileName: string;
+      label: string;
+      meta: Record<string, string>;
+      freezeContainers: () => Promise<string[]>;
+    }> = [
+      ...resource.volumes.map((vol) => ({
+        source: vol,
+        fileName: volumeFileName(vol),
+        label: `volume ${vol}`,
+        meta: { volume: vol },
+        freezeContainers: () => runningRwContainersForVolume(vol),
+      })),
+      ...resource.bindMounts.map((b) => ({
+        source: b.source,
+        fileName: volumeFileName("bind-" + b.source.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "")),
+        label: `host folder ${b.source}`,
+        meta: { bindSource: b.source },
+        freezeContainers: async () => ((await isContainerRunning(b.container)) ? [b.container] : []),
+      })),
+    ];
+
+    const total = targets.length;
     let i = 0;
-    for (const vol of resource.volumes) {
+    for (const t of targets) {
       i++;
-      const owners = liveBackup ? [] : await runningRwContainersForVolume(vol);
+      const owners = liveBackup ? [] : await t.freezeContainers();
       const paused: string[] = [];
       try {
         for (const c of owners) {
-          emit("info", `Freezing ${c} for a consistent copy of ${vol}`);
+          emit("info", `Freezing ${c} for a consistent copy of ${t.source}`);
           await pauseContainer(c);
           paused.push(c);
         }
-        if (liveBackup) emit("warn", `Live copy of ${vol} without freezing (at your own risk) — may be inconsistent`);
-        emit("info", `Archiving volume ${vol} (${i}/${total})`, 20 + (50 * i) / Math.max(1, total));
-        const name = volumeFileName(vol);
-        const path = join(stage, name);
-        await tarVolume(vol, path);
+        if (liveBackup) emit("warn", `Live copy of ${t.source} without freezing (at your own risk) — may be inconsistent`);
+        emit("info", `Archiving ${t.label} (${i}/${total})`, 20 + (50 * i) / Math.max(1, total));
+        const path = join(stage, t.fileName);
+        await tarVolume(t.source, path);
         await verifyTarOpens(path);
-        artifacts.push(await finalizeArtifact("volume", name, path, { volume: vol }, job, stage, emit));
-      } finally {
-        for (const c of paused.reverse()) {
-          emit("info", `Resuming ${c}`);
-          await unpauseContainer(c).catch((e) => emit("error", `Failed to resume ${c}: ${(e as Error).message}`));
-        }
-      }
-    }
-    for (const b of resource.bindMounts) {
-      i++;
-      const freeze = !liveBackup && (await isContainerRunning(b.container));
-      const paused: string[] = [];
-      try {
-        if (freeze) {
-          emit("info", `Freezing ${b.container} for a consistent copy of ${b.source}`);
-          await pauseContainer(b.container);
-          paused.push(b.container);
-        }
-        if (liveBackup) emit("warn", `Live copy of ${b.source} without freezing (at your own risk) — may be inconsistent`);
-        emit("info", `Archiving host folder ${b.source} (${i}/${total})`, 20 + (50 * i) / Math.max(1, total));
-        const name = volumeFileName("bind-" + b.source.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, ""));
-        const path = join(stage, name);
-        await tarVolume(b.source, path); // tarVolume mounts the path — works for host paths too
-        await verifyTarOpens(path);
-        artifacts.push(await finalizeArtifact("volume", name, path, { bindSource: b.source }, job, stage, emit));
+        artifacts.push(await finalizeArtifact("volume", t.fileName, path, t.meta, job, stage, emit));
       } finally {
         for (const c of paused.reverse()) {
           emit("info", `Resuming ${c}`);
@@ -199,7 +197,7 @@ export async function runBackup(job: BackupJob, workDir: string, emit: Emit): Pr
     // no restart, application-consistent.
     if (!primary) throw new Error("Database backup requires a container name");
     emit("info", `Dumping database via ${resource.type} (no downtime)`, 20);
-    const engine = dumpEngine(resource.type);
+    const engine = resource.type;
     const dumpName = dumpFileName(engine, resource.db?.database);
     const dumpPath = join(stage, dumpName);
     await dumpDatabase(resource.type, primary, resource.db ?? {}, dumpPath);
@@ -269,17 +267,14 @@ export async function runBackup(job: BackupJob, workDir: string, emit: Emit): Pr
     // dir; only changed blocks are uploaded. The repo encrypts at rest.
     emit("info", "Storing in restic repository (incremental)", 80);
     if (!job.storage.resticPassword) throw new Error("restic engine selected but no repository password provided");
-    const ctx = await resticContext(job.destination, job.storage.resticPassword);
-    try {
+    await withResticCtx(job.destination, job.storage.resticPassword, async (ctx) => {
       await resticEnsureRepo(ctx);
       const snapId = await resticBackupDir(ctx, stage, [`snap:${job.id}`, `res:${resource.coolifyUuid}`]);
       manifest.resticSnapshotId = snapId;
       // Re-write the manifest with the id so a local copy reflects reality.
       await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
       emit("info", `Stored as restic snapshot ${snapId}`, 95);
-    } finally {
-      await ctx.cleanup();
-    }
+    });
   } else {
     // tar engine: one file per artifact at the destination.
     emit("info", "Uploading to destination", 80);
