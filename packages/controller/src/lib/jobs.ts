@@ -481,9 +481,11 @@ async function anyOnlineAgent() {
  *
  * Returns how many verify jobs were queued.
  */
-export async function enqueueVerifyDestination(destinationId: string): Promise<{ queued: number }> {
+export async function enqueueVerifyDestination(
+  destinationId: string,
+): Promise<{ queued: number; reason?: "empty" | "no-agent" }> {
   const dest = await prisma.destination.findUnique({ where: { id: destinationId } });
-  if (!dest) return { queued: 0 };
+  if (!dest) return { queued: 0, reason: "empty" };
 
   const isRestic = dest.engine === "restic";
   // Re-check both healthy and already-missing snapshots (so a backup whose files
@@ -496,7 +498,7 @@ export async function enqueueVerifyDestination(destinationId: string): Promise<{
     },
     select: { destinationDir: true, agentId: true, resticSnapshotId: true },
   });
-  if (snaps.length === 0) return { queued: 0 };
+  if (snaps.length === 0) return { queued: 0, reason: "empty" };
 
   const resolved = resolveDestination(dest);
   const storage = resolveStorage(dest);
@@ -547,5 +549,6 @@ export async function enqueueVerifyDestination(destinationId: string): Promise<{
     await prisma.agentJob.update({ where: { id: agentJob.id }, data: { payload: job as unknown as object } });
     queued++;
   }
-  return { queued };
+  // Snapshots existed but nothing could be queued → no agent able to reach them.
+  return queued === 0 ? { queued, reason: "no-agent" } : { queued };
 }

@@ -463,8 +463,15 @@ export async function removeServerSchedule(instanceId: string, serverUuid: strin
 export async function verifyDestinationNow(destinationId: string) {
   await requireUser();
   try {
-    const { queued } = await enqueueVerifyDestination(destinationId);
-    if (queued === 0) return { error: "No agent available, or nothing to check" };
+    const { queued, reason } = await enqueueVerifyDestination(destinationId);
+    if (queued === 0) {
+      return {
+        error:
+          reason === "no-agent"
+            ? "No agent online to run the check — start the agent on the host that holds these backups."
+            : "Nothing to verify — this destination has no backups yet.",
+      };
+    }
     revalidatePath("/destinations");
     return { ok: true, detail: `Verifying destination (${queued} job${queued === 1 ? "" : "s"} queued)` };
   } catch (e) {

@@ -12,6 +12,8 @@ export function ActionButton({
   size = "sm",
   confirm,
   successMsg = "Done",
+  disabled = false,
+  title,
 }: {
   action: () => Promise<Result>;
   children: ReactNode;
@@ -19,6 +21,9 @@ export function ActionButton({
   size?: "sm" | "md" | "icon";
   confirm?: string;
   successMsg?: string;
+  /** Disable the button (e.g. nothing to act on); `title` explains why on hover. */
+  disabled?: boolean;
+  title?: string;
 }) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -29,7 +34,8 @@ export function ActionButton({
         type="button"
         variant={variant}
         size={size}
-        disabled={pending}
+        title={title}
+        disabled={pending || disabled}
         onClick={() => {
           if (confirm && !window.confirm(confirm)) return;
           setMsg(null);

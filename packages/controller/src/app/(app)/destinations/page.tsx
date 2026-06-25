@@ -67,7 +67,14 @@ export default async function DestinationsPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <ActionButton action={verifyDestinationNow.bind(null, d.id)} variant="outline" size="sm" successMsg="Checking…">
+                      <ActionButton
+                        action={verifyDestinationNow.bind(null, d.id)}
+                        variant="outline"
+                        size="sm"
+                        successMsg="Checking…"
+                        disabled={d._count.snapshots === 0}
+                        title={d._count.snapshots === 0 ? "No backups to verify yet" : "Check that every backup is still present"}
+                      >
                         <ShieldCheck className="h-3.5 w-3.5" /> Verify
                       </ActionButton>
                       <ActionButton action={testDestinationAction.bind(null, d.id)} variant="outline" size="sm" successMsg="Reachable ✓">
