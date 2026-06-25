@@ -12,7 +12,8 @@ RUN npm run build --workspace @cbm/shared && npm run build --workspace @cbm/agen
 FROM node:22-alpine AS runtime
 # docker-cli: the agent shells out to `docker` for exec/tar/inspect.
 # restic: incremental/deduplicated/encrypted storage engine (optional per destination).
-RUN apk add --no-cache docker-cli restic
+# openssh-client + sshpass: restic's SFTP backend (key or password auth, jump host).
+RUN apk add --no-cache docker-cli restic openssh-client sshpass
 WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist

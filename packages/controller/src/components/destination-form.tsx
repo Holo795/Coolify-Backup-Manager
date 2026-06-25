@@ -9,7 +9,6 @@ export function DestinationForm() {
   const [engine, setEngine] = useState("tar");
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const resticOk = type !== "ssh";
 
   return (
     <form
@@ -36,10 +35,7 @@ export function DestinationForm() {
           id="type"
           name="type"
           value={type}
-          onChange={(e) => {
-            setType(e.target.value);
-            if (e.target.value === "ssh") setEngine("tar");
-          }}
+          onChange={(e) => setType(e.target.value)}
         >
           <option value="local">Local folder</option>
           <option value="ssh">SSH / SFTP</option>
@@ -51,9 +47,7 @@ export function DestinationForm() {
         <Label htmlFor="engine">Storage engine</Label>
         <Select id="engine" name="engine" value={engine} onChange={(e) => setEngine(e.target.value)}>
           <option value="tar">Standard (one archive per backup)</option>
-          <option value="restic" disabled={!resticOk}>
-            restic — incremental + deduplicated + encrypted{resticOk ? "" : " (local/S3 only)"}
-          </option>
+          <option value="restic">restic — incremental + deduplicated + encrypted</option>
         </Select>
         {engine === "restic" && (
           <p className="text-xs text-muted-foreground">

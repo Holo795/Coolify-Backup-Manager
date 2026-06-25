@@ -219,12 +219,9 @@ export async function createDestination(fd: FormData) {
   const name = s(fd, "name");
   const type = s(fd, "type");
   if (!name || !type) return { error: "Name and type required" };
-  // Storage engine: "restic" gives incremental/deduplicated/encrypted storage,
-  // but only over local or S3 (restic-over-SFTP isn't supported here yet).
+  // Storage engine: "restic" gives incremental/deduplicated/encrypted storage
+  // (works over local, S3 and SSH/SFTP — including a jump host).
   const engine = s(fd, "engine") === "restic" ? "restic" : "tar";
-  if (engine === "restic" && type === "ssh") {
-    return { error: "The restic engine supports local and S3 destinations only (not SSH)." };
-  }
 
   let config: unknown;
   if (type === "local") {

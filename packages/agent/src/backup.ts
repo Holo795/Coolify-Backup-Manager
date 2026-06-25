@@ -26,7 +26,7 @@ import {
 import { captureProvenance } from "./provenance.js";
 import { encryptFile, sha256File } from "./crypto.js";
 import { makeTransfer } from "./transfer.js";
-import { resticEnv, resticEnsureRepo, resticBackupDir } from "./restic.js";
+import { resticContext, resticEnsureRepo, resticBackupDir } from "./restic.js";
 import { resolveResource, findDbContainers, readDbCredentials } from "./resolve.js";
 
 export type Emit = (level: "debug" | "info" | "warn" | "error", message: string, progress?: number) => void;
@@ -269,14 +269,17 @@ export async function runBackup(job: BackupJob, workDir: string, emit: Emit): Pr
     // dir; only changed blocks are uploaded. The repo encrypts at rest.
     emit("info", "Storing in restic repository (incremental)", 80);
     if (!job.storage.resticPassword) throw new Error("restic engine selected but no repository password provided");
-    const env = resticEnv(job.destination, job.storage.resticPassword);
-    await resticEnsureRepo(env);
-    const snapId = await resticBackupDir(env, stage, [`snap:${job.id}`, `res:${resource.coolifyUuid}`]);
-    manifest.resticSnapshotId = snapId;
-    // Re-write the manifest with the id so a local copy reflects reality, then
-    // confirm the snapshot is listed.
-    await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
-    emit("info", `Stored as restic snapshot ${snapId}`, 95);
+    const ctx = await resticContext(job.destination, job.storage.resticPassword);
+    try {
+      await resticEnsureRepo(ctx);
+      const snapId = await resticBackupDir(ctx, stage, [`snap:${job.id}`, `res:${resource.coolifyUuid}`]);
+      manifest.resticSnapshotId = snapId;
+      // Re-write the manifest with the id so a local copy reflects reality.
+      await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+      emit("info", `Stored as restic snapshot ${snapId}`, 95);
+    } finally {
+      await ctx.cleanup();
+    }
   } else {
     // tar engine: one file per artifact at the destination.
     emit("info", "Uploading to destination", 80);
