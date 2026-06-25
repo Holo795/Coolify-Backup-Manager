@@ -5,6 +5,7 @@ import { Card, CardContent, Badge, statusTone, EmptyState } from "@/components/u
 import { deleteAgent } from "@/app/actions";
 import { ConfirmDeleteButton } from "@/components/confirm-delete";
 import { AgentServerSelect } from "@/components/agent-server-select";
+import { groupServersByInstance } from "@/lib/servers";
 import { timeAgo } from "@/lib/cn";
 import { Cpu } from "lucide-react";
 
@@ -19,13 +20,7 @@ export default async function AgentsPage() {
     where: { serverUuid: { not: null } },
     select: { instanceId: true, serverUuid: true, serverName: true },
   });
-  const serversByInstance = new Map<string, Map<string, string>>();
-  for (const r of serverRows) {
-    if (!r.serverUuid) continue;
-    const m = serversByInstance.get(r.instanceId) ?? new Map<string, string>();
-    if (!m.has(r.serverUuid)) m.set(r.serverUuid, r.serverName ?? r.serverUuid);
-    serversByInstance.set(r.instanceId, m);
-  }
+  const serversByInstance = groupServersByInstance(serverRows);
   const serverOptionsFor = (instanceId: string | null) =>
     instanceId
       ? [...(serversByInstance.get(instanceId)?.entries() ?? [])].map(([uuid, name]) => ({ uuid, name }))

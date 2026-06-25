@@ -8,7 +8,7 @@ import { requireUser } from "@/lib/session";
 import { encryptSecret, decryptSecret, generateAesKeyB64, randomToken, sha256Hex } from "@/lib/crypto";
 import { CoolifyClient } from "@/lib/coolify";
 import { syncInstance } from "@/lib/discovery";
-import { enqueueBackup, enqueueRestore, enqueuePrune, enqueueVerifyDestination, resolveDestination } from "@/lib/jobs";
+import { enqueueBackup, enqueueRestore, enqueuePrune, enqueueVerifyDestination, resolveDestination, groupSnapshotsForPrune } from "@/lib/jobs";
 import { freqToCron } from "@/lib/schedule";
 import { setTimezone, isValidTimezone } from "@/lib/settings";
 
@@ -292,24 +292,22 @@ export async function deleteDestination(id: string) {
     // agent's host, so group by agent; ssh/s3 group by instance (any agent).
     const snaps = await prisma.snapshot.findMany({
       where: { destinationId: id },
-      select: { destinationDir: true, agentId: true, resticSnapshotId: true, resource: { select: { instanceId: true } } },
+      select: { id: true, destinationDir: true, agentId: true, resticSnapshotId: true, resource: { select: { instanceId: true } } },
     });
-    const groups = new Map<
-      string,
-      { instanceId: string | null; agentId: string | null; dirs: string[]; resticSnapshotIds: string[] }
-    >();
-    for (const s of snaps) {
-      const agentId = dest.type === "local" ? s.agentId : null;
-      const key = dest.type === "local" ? `a:${agentId ?? ""}` : `i:${s.resource.instanceId ?? ""}`;
-      const g = groups.get(key) ?? { instanceId: s.resource.instanceId, agentId, dirs: [], resticSnapshotIds: [] };
-      g.dirs.push(s.destinationDir);
-      if (s.resticSnapshotId) g.resticSnapshotIds.push(s.resticSnapshotId);
-      groups.set(key, g);
-    }
-    for (const g of groups.values()) {
+    const groups = groupSnapshotsForPrune(
+      snaps.map((s) => ({
+        id: s.id,
+        destinationDir: s.destinationDir,
+        agentId: s.agentId,
+        resticSnapshotId: s.resticSnapshotId,
+        instanceId: s.resource.instanceId,
+        destination: dest,
+      })),
+    );
+    for (const g of groups) {
       await enqueuePrune({
         instanceId: g.instanceId,
-        destination: dest,
+        destination: g.destination,
         dirs: g.dirs,
         resticSnapshotIds: g.resticSnapshotIds,
         agentId: g.agentId,
@@ -333,10 +331,18 @@ export async function testDestinationAction(id: string) {
 /** Cancel a snapshot's job if it's still queued (not yet picked up). */
 export async function cancelSnapshot(snapshotId: string): Promise<void> {
   await requireUser();
-  const job = await prisma.agentJob.findFirst({ where: { snapshotId, status: "queued" } });
-  if (job) {
-    await prisma.agentJob.update({ where: { id: job.id }, data: { status: "failed", error: "cancelled", finishedAt: new Date() } });
-    await prisma.snapshot.update({ where: { id: snapshotId }, data: { status: "failed", error: "cancelled", finishedAt: new Date() } });
+  // Guard against the agent claiming the job (queued -> running) between read and
+  // write: updateMany is atomic on the status filter, so a job already in flight
+  // is left untouched and we only fail the snapshot when we actually cancelled.
+  const cancelled = await prisma.agentJob.updateMany({
+    where: { snapshotId, status: "queued" },
+    data: { status: "failed", error: "cancelled", finishedAt: new Date() },
+  });
+  if (cancelled.count > 0) {
+    await prisma.snapshot.update({
+      where: { id: snapshotId },
+      data: { status: "failed", error: "cancelled", finishedAt: new Date() },
+    });
   }
   revalidatePath("/snapshots");
 }
@@ -575,10 +581,4 @@ export async function restoreSnapshot(
   revalidatePath("/snapshots");
   revalidatePath(`/snapshots/${snapshotId}`);
   return { ok: true, detail: target === "in_place" ? "Restore queued" : "Restore → new queued" };
-}
-
-/** Programmatic backup trigger (returns ids) for API/tests. */
-export async function triggerBackup(resourceId: string) {
-  await requireUser();
-  return enqueueBackup(resourceId);
 }

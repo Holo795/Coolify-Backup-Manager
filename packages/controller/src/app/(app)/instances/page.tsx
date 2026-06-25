@@ -18,15 +18,14 @@ import { RevealInstall } from "@/components/reveal-install";
 import { timeAgo } from "@/lib/cn";
 import { describeCron, cronToFrequency } from "@/lib/schedule";
 import { getTimezone } from "@/lib/settings";
+import { isAgentOnline as agentOnline } from "@/lib/agent-status";
+import { groupServersByInstance } from "@/lib/servers";
 import { Server, RefreshCw, Trash2, CalendarClock, ShieldCheck } from "lucide-react";
 import type { BackupPolicy, Destination } from "@/generated/prisma/client";
 
 export const dynamic = "force-dynamic";
 
 type PolicyWithDest = BackupPolicy & { destination: Destination };
-
-const agentOnline = (a: { status: string; lastSeenAt: Date | null }) =>
-  a.status === "online" && !!a.lastSeenAt && Date.now() - new Date(a.lastSeenAt).getTime() < 90_000;
 
 export default async function InstancesPage() {
   const [instances, destinations, serverRows] = await Promise.all([
@@ -47,13 +46,7 @@ export default async function InstancesPage() {
   const tz = await getTimezone();
 
   // Distinct servers per instance (from discovered resources).
-  const serversByInstance = new Map<string, Map<string, string>>();
-  for (const r of serverRows) {
-    if (!r.serverUuid) continue;
-    const m = serversByInstance.get(r.instanceId) ?? new Map<string, string>();
-    if (!m.has(r.serverUuid)) m.set(r.serverUuid, r.serverName ?? r.serverUuid);
-    serversByInstance.set(r.instanceId, m);
-  }
+  const serversByInstance = groupServersByInstance(serverRows);
 
   // Last scheduled run per policy (instance- and server-level).
   const policyIds = instances.flatMap((i) => i.policies.map((p) => p.id));
@@ -65,24 +58,26 @@ export default async function InstancesPage() {
         select: { policyId: true, runId: true, startedAt: true },
       })
     : [];
+  // Tally each run's snapshot statuses in ONE grouped query (not one per policy).
+  const runIds = latestRuns.map((r) => r.runId).filter((x): x is string => !!x);
+  const statusByRun = new Map<string, { ok: number; failed: number; running: number; total: number }>();
+  if (runIds.length) {
+    const groups = await prisma.snapshot.groupBy({ by: ["runId", "status"], where: { runId: { in: runIds } }, _count: true });
+    for (const g of groups) {
+      if (!g.runId) continue;
+      const e = statusByRun.get(g.runId) ?? { ok: 0, failed: 0, running: 0, total: 0 };
+      e.total += g._count;
+      if (g.status === "succeeded") e.ok += g._count;
+      else if (g.status === "failed") e.failed += g._count;
+      else if (g.status === "running") e.running += g._count;
+      statusByRun.set(g.runId, e);
+    }
+  }
   const runByPolicy = new Map<string, { at: Date; ok: number; failed: number; running: number; total: number }>();
-  await Promise.all(
-    latestRuns.map(async (run) => {
-      if (!run.runId || !run.policyId) return;
-      const groups = await prisma.snapshot.groupBy({ by: ["status"], where: { runId: run.runId }, _count: true });
-      let ok = 0;
-      let failed = 0;
-      let running = 0;
-      let total = 0;
-      for (const g of groups) {
-        total += g._count;
-        if (g.status === "succeeded") ok = g._count;
-        else if (g.status === "failed") failed = g._count;
-        else if (g.status === "running") running = g._count;
-      }
-      runByPolicy.set(run.policyId, { at: run.startedAt, ok, failed, running, total });
-    }),
-  );
+  for (const run of latestRuns) {
+    if (!run.runId || !run.policyId) continue;
+    runByPolicy.set(run.policyId, { at: run.startedAt, ...(statusByRun.get(run.runId) ?? { ok: 0, failed: 0, running: 0, total: 0 }) });
+  }
 
   // A schedule block (used both instance-wide and per-server).
   function scheduleBlock(opts: {

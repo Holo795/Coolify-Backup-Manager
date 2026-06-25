@@ -577,19 +577,7 @@ export class CoolifyClient {
   }
 }
 
+/** Strip Coolify's `standalone-` prefix to get the bare resource type. */
 export function normalizeType(raw: string): string {
-  const t = raw.replace(/^standalone-/, "");
-  const known = [
-    "postgresql",
-    "mysql",
-    "mariadb",
-    "mongodb",
-    "redis",
-    "keydb",
-    "dragonfly",
-    "clickhouse",
-    "application",
-    "service",
-  ];
-  return known.includes(t) ? t : t;
+  return raw.replace(/^standalone-/, "");
 }

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { liveAgentWhere } from "@/lib/agent-status";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, Badge, Button, Input, statusTone, EmptyState } from "@/components/ui";
 import { backupNow } from "@/app/actions";
@@ -49,7 +50,7 @@ export default async function ResourcesPage({
   // Which instances have a live agent (recent heartbeat)? Resources whose
   // instance has none can't be backed up, so we grey them out + disable backup.
   const liveAgents = await prisma.agent.findMany({
-    where: { status: "online", lastSeenAt: { gte: new Date(Date.now() - 90_000) } },
+    where: liveAgentWhere(),
     select: { instanceId: true },
   });
   const liveInstanceIds = new Set(liveAgents.map((a) => a.instanceId).filter(Boolean));
@@ -109,8 +110,8 @@ export default async function ResourcesPage({
                             </div>
                             <div className="absolute inset-0 flex items-center justify-center px-4">
                               <span className="flex items-center gap-1.5 text-sm font-medium text-[var(--color-warning)]">
-                                <Unplug className="h-4 w-4 shrink-0" /> Agent unavailable — cette ressource n&apos;est pas
-                                disponible
+                                <Unplug className="h-4 w-4 shrink-0" /> Agent unavailable — this resource can&apos;t be
+                                backed up
                               </span>
                             </div>
                           </div>

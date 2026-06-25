@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { liveAgentWhere } from "@/lib/agent-status";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle, Badge, statusTone } from "@/components/ui";
 import { repinDeployment, deleteSnapshot } from "@/app/actions";
@@ -29,7 +30,7 @@ export default async function SnapshotDetail({ params }: { params: Promise<{ id:
 
   // Restore (and re-pin) need a live agent to execute on the host.
   const liveAgent = await prisma.agent.findFirst({
-    where: { instanceId: snapshot.resource.instanceId, status: "online", lastSeenAt: { gte: new Date(Date.now() - 90_000) } },
+    where: liveAgentWhere(snapshot.resource.instanceId),
     select: { id: true },
   });
   const agentDown = !liveAgent;

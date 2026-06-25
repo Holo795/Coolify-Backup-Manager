@@ -87,7 +87,7 @@ export function LiveLog({
           events.map((e, i) => (
             <div key={i} className="flex gap-2">
               <span className="text-muted-foreground">
-                {new Date(e.ts).toLocaleTimeString("fr-FR", { timeZone, hour12: false })}
+                {new Date(e.ts).toLocaleTimeString("en-GB", { timeZone, hour12: false })}
               </span>
               <span
                 className={

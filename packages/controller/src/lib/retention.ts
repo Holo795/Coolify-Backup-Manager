@@ -1,6 +1,6 @@
 import { prisma } from "./prisma";
 import { computeKeepSet } from "./gfs";
-import { enqueuePrune } from "./jobs";
+import { enqueuePrune, groupSnapshotsForPrune } from "./jobs";
 
 export { computeKeepSet } from "./gfs";
 
@@ -41,29 +41,19 @@ export async function applyRetention(policyId: string): Promise<{ deleted: numbe
     const toDelete = snaps.filter((s) => !keep.has(s.id));
     if (toDelete.length === 0) continue;
 
-    // Delete files on the destination via the agent. Group per destination, and
-    // for a "local" destination also per producing agent (the files live on that
-    // agent's host, so only it can delete them).
-    const byGroup = new Map<
-      string,
-      {
-        destination: (typeof toDelete)[number]["destination"];
-        agentId: string | null;
-        dirs: string[];
-        resticSnapshotIds: string[];
-        snapshotIds: string[];
-      }
-    >();
-    for (const s of toDelete) {
-      const agentId = s.destination.type === "local" ? s.agentId : null;
-      const key = `${s.destinationId}::${agentId ?? ""}`;
-      const g = byGroup.get(key) ?? { destination: s.destination, agentId, dirs: [], resticSnapshotIds: [], snapshotIds: [] };
-      g.dirs.push(s.destinationDir);
-      g.snapshotIds.push(s.id);
-      if (s.resticSnapshotId) g.resticSnapshotIds.push(s.resticSnapshotId);
-      byGroup.set(key, g);
-    }
-    for (const g of byGroup.values()) {
+    // Delete files on the destination via the agent (grouped/routed by the shared
+    // rule: per producing agent for "local", per instance for ssh/s3).
+    const groups = groupSnapshotsForPrune(
+      toDelete.map((s) => ({
+        id: s.id,
+        destinationDir: s.destinationDir,
+        agentId: s.agentId,
+        resticSnapshotId: s.resticSnapshotId,
+        instanceId: r.instanceId,
+        destination: s.destination,
+      })),
+    );
+    for (const g of groups) {
       // Only drop the DB rows once the agent has actually been handed the delete:
       // if no agent is available (enqueue returns null) or it throws, keep the
       // rows so the files aren't orphaned and retention retries next run.

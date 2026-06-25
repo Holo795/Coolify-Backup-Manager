@@ -481,6 +481,49 @@ async function anyOnlineAgent() {
   return prisma.agent.findFirst({ where: { status: "online" }, orderBy: { lastSeenAt: "desc" } });
 }
 
+/** One group of snapshots to prune, already routed to a single agent. */
+export type PruneGroup = {
+  destination: Destination;
+  instanceId: string | null;
+  agentId: string | null;
+  dirs: string[];
+  resticSnapshotIds: string[];
+  snapshotIds: string[];
+};
+
+/**
+ * Group snapshots so each group can be pruned by exactly one agent. The routing
+ * rule (which file deletion correctness depends on) lives only here:
+ *  - "local" destination: files are on the producing agent's host → group per agent.
+ *  - ssh/s3: reachable from any of the instance's agents → group per instance.
+ * Used by both manual destination/snapshot deletion and GFS retention.
+ */
+export function groupSnapshotsForPrune(
+  snaps: Array<{
+    id: string;
+    destinationDir: string;
+    agentId: string | null;
+    resticSnapshotId: string | null;
+    instanceId: string | null;
+    destination: Destination;
+  }>,
+): PruneGroup[] {
+  const groups = new Map<string, PruneGroup>();
+  for (const s of snaps) {
+    const local = s.destination.type === "local";
+    const agentId = local ? s.agentId : null;
+    const key = `${s.destination.id}::${local ? `a:${agentId ?? ""}` : `i:${s.instanceId ?? ""}`}`;
+    const g =
+      groups.get(key) ??
+      { destination: s.destination, instanceId: s.instanceId, agentId, dirs: [], resticSnapshotIds: [], snapshotIds: [] };
+    g.dirs.push(s.destinationDir);
+    g.snapshotIds.push(s.id);
+    if (s.resticSnapshotId) g.resticSnapshotIds.push(s.resticSnapshotId);
+    groups.set(key, g);
+  }
+  return [...groups.values()];
+}
+
 /**
  * Reconcile a destination: ask an agent to list it and report which snapshots'
  * files are still present. A snapshot whose files are gone is later flagged

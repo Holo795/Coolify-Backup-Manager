@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { notifyBackupFailed } from "./notify";
+import { AGENT_ONLINE_MS } from "./agent-status";
 
 export interface ReaperOptions {
   /** Mark an agent offline after this long without a heartbeat. */
@@ -13,7 +14,7 @@ export interface ReaperOptions {
  * been "running" too long (agent died mid-job). Idempotent; safe to run often.
  */
 export async function reaper(now = new Date(), opts: ReaperOptions = {}): Promise<{ offline: number; stuck: number }> {
-  const offlineMs = opts.offlineMs ?? 90_000;
+  const offlineMs = opts.offlineMs ?? AGENT_ONLINE_MS;
   const stuckMs = opts.stuckMs ?? 30 * 60_000;
 
   const offline = await prisma.agent.updateMany({

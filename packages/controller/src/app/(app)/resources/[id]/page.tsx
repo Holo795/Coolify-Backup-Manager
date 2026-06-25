@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { liveAgentWhere } from "@/lib/agent-status";
 import { PageHeader } from "@/components/page-header";
 import { ScheduleForm } from "@/components/schedule-form";
 import { ActionButton } from "@/components/action-button";
@@ -36,7 +37,7 @@ export default async function ResourceDetail({ params }: { params: Promise<{ id:
 
   // Backups/restores need a live agent on this resource's instance.
   const liveAgent = await prisma.agent.findFirst({
-    where: { instanceId: resource.instanceId, status: "online", lastSeenAt: { gte: new Date(Date.now() - 90_000) } },
+    where: liveAgentWhere(resource.instanceId),
     select: { id: true },
   });
   const agentDown = !liveAgent;
@@ -79,9 +80,9 @@ export default async function ResourceDetail({ params }: { params: Promise<{ id:
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <p className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-              Les sauvegardes ne redémarrent jamais cette ressource. Les bases de données sont exportées en marche ;
-              pour les fichiers, l&apos;agent fige (met en pause) quelques secondes uniquement les conteneurs qui
-              écrivent, puis les relance — sans aucun redémarrage. Les réglages s&apos;enregistrent automatiquement.
+              Backups never restart this resource. Databases are exported live; for files, the agent briefly freezes
+              (pauses) only the containers that write to them for a few seconds, then resumes them — with no restart
+              at all. Settings are saved automatically.
             </p>
             <ResourceToggles id={resource.id} backupEnabled={resource.backupEnabled} liveBackup={resource.liveBackup} verbose />
           </CardContent>
@@ -259,7 +260,7 @@ export default async function ResourceDetail({ params }: { params: Promise<{ id:
               <Unplug className="h-6 w-6 text-[var(--color-warning)]" />
               <div className="font-medium">Agent unavailable</div>
               <p className="text-sm text-muted-foreground">
-                Cette ressource n&apos;est pas disponible : aucun agent n&apos;est installé sur{" "}
+                This resource is unavailable: no agent is installed on{" "}
                 <span className="text-foreground">{resource.instance.name}</span>.
               </p>
             </div>

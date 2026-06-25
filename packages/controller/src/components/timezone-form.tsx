@@ -17,7 +17,7 @@ export function TimezoneForm({ current }: { current: string }) {
   const [now, setNow] = useState("");
 
   useEffect(() => {
-    const update = () => setNow(new Date().toLocaleString("fr-FR", { timeZone: tz, hour12: false }));
+    const update = () => setNow(new Date().toLocaleString("en-GB", { timeZone: tz, hour12: false }));
     update();
     const t = setInterval(update, 1000);
     return () => clearInterval(t);

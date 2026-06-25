@@ -17,7 +17,9 @@ export function formatBytes(n: number | bigint): string {
 export function formatDateTime(date: Date | string | null | undefined, timeZone?: string): string {
   if (!date) return "—";
   const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleString("fr-FR", { timeZone, hour12: false });
+  // Fixed locale so the server- and client-rendered strings match (no hydration
+  // mismatch); en-GB gives an unambiguous 24h day/month/year format.
+  return d.toLocaleString("en-GB", { timeZone, hour12: false });
 }
 
 export function timeAgo(date: Date | string | null | undefined): string {

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { liveAgentWhere } from "@/lib/agent-status";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, Badge, Button, statusTone, EmptyState } from "@/components/ui";
 import { retrySnapshot, cancelSnapshot, deleteSnapshot } from "@/app/actions";
@@ -19,7 +20,7 @@ export default async function SnapshotsPage() {
       include: { resource: true, destination: true, _count: { select: { artifacts: true } } },
     }),
     prisma.agent.findMany({
-      where: { status: "online", lastSeenAt: { gte: new Date(Date.now() - 90_000) } },
+      where: liveAgentWhere(),
       select: { instanceId: true },
     }),
   ]);

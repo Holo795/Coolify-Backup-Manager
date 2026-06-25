@@ -58,8 +58,8 @@ export function ResourceToggles({
           <span>
             <span className="font-medium">Include in scheduled backups</span>
             <span className="mt-0.5 block text-xs text-muted-foreground">
-              Quand c&apos;est activé, cette ressource est sauvegardée par le planning de son instance (ou par son
-              propre planning). Décoché, elle est ignorée par les sauvegardes planifiées.
+              When enabled, this resource is backed up by its instance&apos;s schedule (or its own override).
+              Unchecked, it&apos;s skipped by scheduled backups.
             </span>
           </span>
         </label>
@@ -74,10 +74,10 @@ export function ResourceToggles({
             className="mt-0.5"
           />
           <span>
-            <span className="font-medium">Copier en marche, sans figer (à mes risques)</span>
+            <span className="font-medium">Copy live, without freezing (at my own risk)</span>
             <span className="mt-0.5 block text-xs text-muted-foreground">
-              Copie les fichiers sans aucun gel : zéro interruption, mais un fichier réécrit pile pendant la copie
-              pourrait être incohérent. À éviter si la ressource écrit beaucoup hors base de données.
+              Copies files without any freeze: zero downtime, but a file rewritten right as it&apos;s copied could be
+              inconsistent. Avoid if the resource writes a lot outside its database.
             </span>
           </span>
         </label>
@@ -101,7 +101,7 @@ export function ResourceToggles({
       </label>
       <label
         className="flex items-center gap-1.5 text-xs"
-        title="Copier les fichiers sans figer les conteneurs (zéro interruption, mais risque d'incohérence)"
+        title="Copy files without freezing the containers (zero downtime, but a risk of inconsistency)"
       >
         <input
           type="checkbox"

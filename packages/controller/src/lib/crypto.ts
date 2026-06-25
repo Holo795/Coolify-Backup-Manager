@@ -35,13 +35,6 @@ export function decryptSecret(blob: string): string {
   return pt.toString("utf8");
 }
 
-export function encryptJSON(obj: unknown): string {
-  return encryptSecret(JSON.stringify(obj));
-}
-export function decryptJSON<T>(blob: string): T {
-  return JSON.parse(decryptSecret(blob)) as T;
-}
-
 /** Generate a fresh base64 32-byte AES key (for per-destination encryption). */
 export function generateAesKeyB64(): string {
   return randomBytes(32).toString("base64");
