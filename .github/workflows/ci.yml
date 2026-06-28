@@ -12,6 +12,11 @@ on:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    # `prisma generate` (run by the controller's postinstall) loads prisma.config
+    # which requires DATABASE_URL to resolve. Generation is offline and never
+    # connects, so a placeholder is enough to satisfy config loading in CI.
+    env:
+      DATABASE_URL: postgresql://cbm:cbm@localhost:5432/cbm
     steps:
       - uses: actions/checkout@v4
 
