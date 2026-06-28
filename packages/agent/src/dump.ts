@@ -53,7 +53,7 @@ function buildMysqlDumpCmd(tool: string, user: string, database: string): string
 
 /**
  * Stream a consistent RDB snapshot of a Redis-family store (redis/keydb/
- * dragonfly) to outFile via the in-container CLI — no freeze, no disk write on
+ * dragonfly) to outFile via the in-container CLI - no freeze, no disk write on
  * the server. Throws if no compatible CLI is present (caller falls back to a
  * volume copy). Auth goes through REDISCLI_AUTH so the password never lands in
  * the process args.

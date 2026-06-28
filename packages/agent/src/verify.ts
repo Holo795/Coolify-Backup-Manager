@@ -6,7 +6,7 @@ import type { Emit } from "./backup.js";
 
 /**
  * Reconcile a destination: check that each snapshot directory's files are still
- * present. A directory whose manifest is gone is reported as missing — the
+ * present. A directory whose manifest is gone is reported as missing - the
  * controller then marks that snapshot and alerts. This catches backups deleted
  * directly at the destination (which otherwise only surface at restore time).
  */

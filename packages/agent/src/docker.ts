@@ -40,7 +40,7 @@ export async function dockerFromFile(args: string[], inFile: string): Promise<vo
   child.stderr.on("data", (d) => (stderr += d.toString()));
   child.stdout.on("data", () => {}); // drain so a full pipe can't block the child
   // Capture the exit code independently of the stdin write. If the child closes
-  // its stdin early (e.g. it rejected the input) the write side gets EPIPE — we
+  // its stdin early (e.g. it rejected the input) the write side gets EPIPE - we
   // swallow it so the authoritative error stays the exit code + buffered stderr.
   const exit = once(child, "close") as Promise<[number]>;
   await pipeline(createReadStream(inFile), child.stdin).catch(() => undefined);
@@ -105,7 +105,7 @@ export async function unpauseContainer(name: string): Promise<void> {
 }
 
 /**
- * Running containers that mount `volume` read-write — i.e. the ones that could
+ * Running containers that mount `volume` read-write - i.e. the ones that could
  * be writing to it, so they need a brief freeze for a consistent copy. A volume
  * mounted read-only (or by no running container) needs no freeze.
  */
@@ -198,7 +198,7 @@ export async function restoreToPath(hostPath: string, inFile: string): Promise<v
 
 /**
  * Verify a tarball opens (lists without error) by streaming it through a
- * throwaway container — no host-path access needed. Throws if it's corrupt.
+ * throwaway container - no host-path access needed. Throws if it's corrupt.
  */
 export async function verifyTarOpens(inFile: string): Promise<void> {
   await dockerFromFile(["run", "--rm", "-i", "alpine:3.20", "tar", "-tf", "-"], inFile);

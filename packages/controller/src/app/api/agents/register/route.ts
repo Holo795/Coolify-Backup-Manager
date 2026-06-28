@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   });
   if (!byToken) {
     return NextResponse.json(
-      { error: "enrollment token invalid or rotated — reveal a new install command in the controller" },
+      { error: "enrollment token invalid or rotated - reveal a new install command in the controller" },
       { status: 401 },
     );
   }

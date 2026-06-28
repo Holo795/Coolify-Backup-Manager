@@ -15,7 +15,7 @@ export function formatBytes(n: number | bigint): string {
 
 /** Absolute date+time formatted in the given IANA timezone (server or client). */
 export function formatDateTime(date: Date | string | null | undefined, timeZone?: string): string {
-  if (!date) return "—";
+  if (!date) return "-";
   const d = typeof date === "string" ? new Date(date) : date;
   // Fixed locale so the server- and client-rendered strings match (no hydration
   // mismatch); en-GB gives an unambiguous 24h day/month/year format.
@@ -23,7 +23,7 @@ export function formatDateTime(date: Date | string | null | undefined, timeZone?
 }
 
 export function timeAgo(date: Date | string | null | undefined): string {
-  if (!date) return "—";
+  if (!date) return "-";
   const d = typeof date === "string" ? new Date(date) : date;
   const s = Math.floor((Date.now() - d.getTime()) / 1000);
   if (s < 0) return "in the future";

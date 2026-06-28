@@ -39,7 +39,7 @@ export interface DbConfig {
 /** All standalone-database engines Coolify can create via the API. */
 export type CloneEngine = DbEngine | "redis" | "keydb" | "dragonfly" | "clickhouse";
 
-/** Image tags that move over time — a clone must pin the digest, not the tag. */
+/** Image tags that move over time - a clone must pin the digest, not the tag. */
 const FLOATING_IMAGE_TAGS = ["latest", "main", "master", "stable", "edge", "nightly"];
 
 /** Map an original DB config to the per-engine credential fields for create. */
@@ -239,7 +239,7 @@ export class CoolifyClient {
 
   /**
    * Clone an application into a NEW Coolify resource (same project / env /
-   * server, new name). NOT deployed and NO domain on purpose — the operator
+   * server, new name). NOT deployed and NO domain on purpose - the operator
    * wires env + URL then deploys.
    *
    * The code is pinned to match the restored data:
@@ -388,7 +388,7 @@ export class CoolifyClient {
 
   /**
    * Clone a service into a NEW Coolify resource using its compose (or one-click
-   * type). NOT deployed and NO domain — the operator wires env + URL then
+   * type). NOT deployed and NO domain - the operator wires env + URL then
    * deploys. Returns the new resource uuid.
    */
   async cloneService(opts: {
@@ -437,7 +437,7 @@ export class CoolifyClient {
     let n = 0;
     for (const e of envs ?? []) {
       if (!e?.key) continue;
-      // Coolify's field is `is_buildtime` (not `is_build_time` — that 500s).
+      // Coolify's field is `is_buildtime` (not `is_build_time` - that 500s).
       const ok = await this.post(`/api/v1/${kind}/${uuid}/envs`, {
         key: e.key,
         value: e.value ?? "",

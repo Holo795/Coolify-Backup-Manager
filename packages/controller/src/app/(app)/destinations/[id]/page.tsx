@@ -21,7 +21,7 @@ export default async function DestinationDetail({ params }: { params: Promise<{ 
   });
 
   // For a "local" destination the files are physically split across each
-  // producing agent's host — break the storage down by server so the size
+  // producing agent's host - break the storage down by server so the size
   // isn't a misleading single number.
   const serverGroups = await prisma.snapshot.groupBy({
     by: ["agentId"],
@@ -104,7 +104,7 @@ export default async function DestinationDetail({ params }: { params: Promise<{ 
           </CardHeader>
           <CardContent>
             <p className="mb-3 text-xs text-muted-foreground">
-              This local destination is realised per agent — each server holds its own files at the configured path.
+              This local destination is realised per agent - each server holds its own files at the configured path.
             </p>
             <div className="flex flex-col gap-2">
               {serverRows.map((s) => (

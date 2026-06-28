@@ -1,4 +1,4 @@
-/** Database engine detection from a container image — used to give services'
+/** Database engine detection from a container image - used to give services'
  * internal databases (and Redis-family stores) a proper logical export instead
  * of a frozen volume copy. */
 

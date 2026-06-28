@@ -30,7 +30,7 @@ export function AgentServerSelect({
   if (options.length <= 1 && !serverManual) {
     return (
       <span className="text-muted-foreground">
-        {serverName ?? (serverUuid ? serverUuid.slice(0, 8) : "—")}
+        {serverName ?? (serverUuid ? serverUuid.slice(0, 8) : "-")}
         {serverName || serverUuid ? <Badge tone="neutral" className="ml-2">auto</Badge> : null}
       </span>
     );

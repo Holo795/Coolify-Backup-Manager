@@ -81,7 +81,7 @@ export default async function ResourceDetail({ params }: { params: Promise<{ id:
           <CardContent className="flex flex-col gap-3">
             <p className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
               Backups never restart this resource. Databases are exported live; for files, the agent briefly freezes
-              (pauses) only the containers that write to them for a few seconds, then resumes them — with no restart
+              (pauses) only the containers that write to them for a few seconds, then resumes them - with no restart
               at all. Settings are saved automatically.
             </p>
             <ResourceToggles id={resource.id} backupEnabled={resource.backupEnabled} liveBackup={resource.liveBackup} verbose />
@@ -110,10 +110,10 @@ export default async function ResourceDetail({ params }: { params: Promise<{ id:
               ) : eff.source === "instance" ? (
                 <>
                   Inherits <span className="text-foreground">{resource.instance.name}</span>:{" "}
-                  {eff.policy ? describeCron(eff.policy.cron, tz) : "—"} → {eff.policy?.destination.name}
+                  {eff.policy ? describeCron(eff.policy.cron, tz) : "-"} → {eff.policy?.destination.name}
                 </>
               ) : eff.source === "none" ? (
-                <span className="text-[var(--color-warning)]">No schedule — set one on the instance, or override here.</span>
+                <span className="text-[var(--color-warning)]">No schedule - set one on the instance, or override here.</span>
               ) : (
                 <>Covered by a global schedule.</>
               )}

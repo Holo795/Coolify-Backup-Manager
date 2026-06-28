@@ -47,7 +47,7 @@ export function DestinationForm() {
         <Label htmlFor="engine">Storage engine</Label>
         <Select id="engine" name="engine" value={engine} onChange={(e) => setEngine(e.target.value)}>
           <option value="tar">Standard (one archive per backup)</option>
-          <option value="restic">restic — incremental + deduplicated + encrypted</option>
+          <option value="restic">restic - incremental + deduplicated + encrypted</option>
         </Select>
         {engine === "restic" && (
           <p className="text-xs text-muted-foreground">
@@ -89,7 +89,7 @@ export function DestinationForm() {
               directly (e.g. a private IP behind a gateway). */}
           <details className="rounded-md border bg-muted/20 p-3">
             <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
-              Connect through a jump host (bastion) — optional
+              Connect through a jump host (bastion) - optional
             </summary>
             <div className="mt-3 flex flex-col gap-2">
               <p className="text-xs text-muted-foreground">

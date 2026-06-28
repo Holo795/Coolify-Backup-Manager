@@ -67,7 +67,7 @@ export function resolveStorage(dest: Destination): StorageSpec {
  *      (legacy / single-server behaviour);
  *   3. if exactly one online agent serves the instance → use it (single-server
  *      convenience, e.g. before auto-detection has run);
- *   4. otherwise null — the caller raises a clear "no agent on server X" error.
+ *   4. otherwise null - the caller raises a clear "no agent on server X" error.
  */
 async function pickAgent(instanceId: string | null, serverUuid?: string | null) {
   if (serverUuid) {
@@ -450,7 +450,7 @@ export async function enqueuePrune(opts: {
   dirs: string[];
   /** restic snapshot ids to forget (restic engine). */
   resticSnapshotIds?: string[];
-  /** Target a specific agent (the producer) — required for a "local" destination
+  /** Target a specific agent (the producer) - required for a "local" destination
    * whose files live on that agent's host. */
   agentId?: string | null;
 }): Promise<{ jobId: string; agentId: string } | null> {

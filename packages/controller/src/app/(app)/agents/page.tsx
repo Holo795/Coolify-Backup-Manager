@@ -37,7 +37,7 @@ export default async function AgentsPage() {
         <EmptyState
           icon={<Cpu className="h-6 w-6" />}
           title="No agents connected"
-          hint="Connect a Coolify instance, then run its one-line install command (Reveal install command) on the host — the agent enrolls and links itself."
+          hint="Connect a Coolify instance, then run its one-line install command (Reveal install command) on the host - the agent enrolls and links itself."
         />
       ) : (
         <Card>
@@ -81,7 +81,7 @@ export default async function AgentsPage() {
                         options={serverOptionsFor(a.instanceId)}
                       />
                     </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{a.dockerVersion ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground">{a.dockerVersion ?? "-"}</td>
                     <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{a.containers ?? 0}</td>
                     <td className="px-4 py-2.5 text-muted-foreground">{timeAgo(a.lastSeenAt)}</td>
                     <td className="px-4 py-2.5">
@@ -122,7 +122,7 @@ export default async function AgentsPage() {
                         <span className="text-[var(--color-warning)]">unlinked</span>
                       )}
                     </span>
-                    <span>Docker {a.dockerVersion ?? "—"}</span>
+                    <span>Docker {a.dockerVersion ?? "-"}</span>
                     <span>{a.containers ?? 0} containers</span>
                     <span>seen {timeAgo(a.lastSeenAt)}</span>
                   </div>
@@ -158,7 +158,7 @@ export default async function AgentsPage() {
         <Link href="/instances" className="text-accent hover:underline">
           Coolify instances
         </Link>{" "}
-        page — each instance has its own enrollment token, so agents link themselves automatically.
+        page - each instance has its own enrollment token, so agents link themselves automatically.
       </p>
     </>
   );

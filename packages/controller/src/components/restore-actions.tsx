@@ -41,7 +41,7 @@ export function RestoreActions({
     });
   }
 
-  const disabledTitle = hasAgent ? undefined : "No live agent for this instance — restore needs one";
+  const disabledTitle = hasAgent ? undefined : "No live agent for this instance - restore needs one";
 
   return (
     <span className="inline-flex items-center gap-1.5">

@@ -75,7 +75,7 @@ export async function resolveResource(resource: ResourceDescriptor): Promise<Res
     r.db = await readDbCredentials(r.containerName, resource.type);
   }
 
-  // Host-path (bind) mounts holding data — captured too, so nothing is silently
+  // Host-path (bind) mounts holding data - captured too, so nothing is silently
   // left out. System/infra binds (docker socket, /etc/*, /proc…) are skipped.
   if (r.bindMounts.length === 0) {
     const binds = new Map<string, string>(); // source -> container
@@ -139,7 +139,7 @@ export async function readDbCredentials(container: string, type: ResourceType): 
         database: env.POSTGRES_DB || env.POSTGRES_USER || "postgres",
       };
     case "mysql":
-      // Use root for dump/restore — it needs CREATE DATABASE + full privileges.
+      // Use root for dump/restore - it needs CREATE DATABASE + full privileges.
       return {
         user: "root",
         password: env.MYSQL_ROOT_PASSWORD || env.MYSQL_PASSWORD || "",

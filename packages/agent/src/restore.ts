@@ -105,13 +105,13 @@ export async function runRestore(job: RestoreJob, workDir: string, emit: Emit): 
       // volumes. Never touch the original resource's containers/volumes.
       for (const v of volumes) {
         if (v.meta.bindSource) {
-          emit("warn", `Host folder "${v.meta.bindSource}" not restored to the clone — restore it manually if needed`);
+          emit("warn", `Host folder "${v.meta.bindSource}" not restored to the clone - restore it manually if needed`);
           continue;
         }
         const src = v.meta.volume;
         const dest = src ? job.volumeMap?.[src] : undefined;
         if (!dest) {
-          emit("warn", `No clone volume mapping for "${src ?? v.filename}" — skipping (restore it manually after deploy)`);
+          emit("warn", `No clone volume mapping for "${src ?? v.filename}" - skipping (restore it manually after deploy)`);
           continue;
         }
         emit("info", `Restoring volume ${src} → ${dest}`, 70);
@@ -120,7 +120,7 @@ export async function runRestore(job: RestoreJob, workDir: string, emit: Emit): 
       for (const d of redisDumps) {
         const dest = d.meta.volume ? job.volumeMap?.[d.meta.volume] : undefined;
         if (!dest) {
-          emit("warn", `No clone volume mapping for the ${d.meta.engine} snapshot — skipping`);
+          emit("warn", `No clone volume mapping for the ${d.meta.engine} snapshot - skipping`);
           continue;
         }
         emit("info", `Restoring ${d.meta.engine} snapshot → ${dest}`, 72);
@@ -169,7 +169,7 @@ export async function runRestore(job: RestoreJob, workDir: string, emit: Emit): 
     }
 
     // Service-internal logical dumps (in-place only): load each into its own
-    // container after it's back up. Best-effort — the volume copy already
+    // container after it's back up. Best-effort - the volume copy already
     // restored the data, so a failure here isn't fatal.
     if (!isNew && serviceDumps.length > 0) {
       for (const d of serviceDumps) {
@@ -186,7 +186,7 @@ export async function runRestore(job: RestoreJob, workDir: string, emit: Emit): 
         );
       }
     } else if (isNew && serviceDumps.length > 0) {
-      emit("warn", `${serviceDumps.length} service-internal database dump(s) not applied to the clone — its volumes were restored instead.`);
+      emit("warn", `${serviceDumps.length} service-internal database dump(s) not applied to the clone - its volumes were restored instead.`);
     }
 
     // For a freshly-cloned app/service, remind the operator of the manual steps

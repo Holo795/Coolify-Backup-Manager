@@ -12,11 +12,11 @@ const GRACE_MS = 2 * 60 * 60 * 1000;
  * Detect scheduled backups that never ran. For each enabled resource with an
  * effective schedule, find the most recent time it should have fired; if NO
  * snapshot was even attempted for that fire (and we're past the grace window),
- * it was missed — alert once (debounced via Resource.lastOverdueAlertAt).
+ * it was missed - alert once (debounced via Resource.lastOverdueAlertAt).
  *
  * This is distinct from a failed backup (which has its own alert) and from a
  * backup that vanished from the destination (reconciliation): here, nothing ran
- * at all — e.g. the controller was down at the cron minute.
+ * at all - e.g. the controller was down at the cron minute.
  */
 export async function checkOverdue(now = new Date()): Promise<{ overdue: number }> {
   const tz = await getTimezone();

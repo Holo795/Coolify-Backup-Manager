@@ -3,7 +3,7 @@ import { env } from "@/lib/env";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /install.sh — a tiny, idempotent installer for the backup agent.
+ * GET /install.sh - a tiny, idempotent installer for the backup agent.
  *
  * Usage (the per-instance token comes from the controller UI, shown once):
  *   curl -fsSL <controller>/install.sh | CBM_TOKEN=cbm_xxx sh
@@ -18,7 +18,7 @@ export async function GET() {
   const image = `${env.agentImage}:${env.agentImageTag}`;
 
   const script = `#!/bin/sh
-# CBM — Coolify Backup Manager — agent installer
+# CBM - Coolify Backup Manager - agent installer
 set -e
 
 CONTROLLER_URL="${base}"
@@ -40,7 +40,7 @@ echo "==> Pulling \$IMAGE"
 docker pull "\$IMAGE"
 
 if docker ps -a --format '{{.Names}}' | grep -qx cbm-agent; then
-  echo "==> An agent is already installed on this host — reconfiguring with the new token."
+  echo "==> An agent is already installed on this host - reconfiguring with the new token."
   docker rm -f cbm-agent >/dev/null 2>&1 || true
 fi
 

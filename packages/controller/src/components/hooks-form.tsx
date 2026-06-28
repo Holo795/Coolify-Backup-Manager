@@ -85,7 +85,7 @@ export function HooksForm({
       <p className="text-xs text-muted-foreground">
         Run inside {multi ? "each named container" : "the resource's primary container"}. A failing pre-command aborts
         the backup; the post-command always runs. Leave blank to disable.
-        {containers.length === 0 && " (Containers are detected after the first backup — for now this targets the primary container.)"}
+        {containers.length === 0 && " (Containers are detected after the first backup - for now this targets the primary container.)"}
       </p>
       <div className="flex items-center gap-3">
         <Button type="submit" variant="outline" size="sm" disabled={pending}>

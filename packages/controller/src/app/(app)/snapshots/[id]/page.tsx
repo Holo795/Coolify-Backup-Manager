@@ -87,8 +87,8 @@ export default async function SnapshotDetail({ params }: { params: Promise<{ id:
             <Row k="Status" v={<Badge tone={statusTone(snapshot.status)}>{snapshot.status}</Badge>} />
             <Row k="Directory" v={<span className="font-mono text-xs">{snapshot.destinationDir}</span>} />
             <Row k="Size" v={formatBytes(snapshot.sizeBytes)} />
-            <Row k="Commit" v={<span className="font-mono text-xs">{manifest?.provenance?.gitCommitSha ?? "—"}</span>} />
-            <Row k="Image" v={<span className="font-mono text-xs">{manifest?.provenance?.imageDigest ?? "—"}</span>} />
+            <Row k="Commit" v={<span className="font-mono text-xs">{manifest?.provenance?.gitCommitSha ?? "-"}</span>} />
+            <Row k="Image" v={<span className="font-mono text-xs">{manifest?.provenance?.imageDigest ?? "-"}</span>} />
             {snapshot.error && <Row k="Error" v={<span className="text-[var(--color-danger)]">{snapshot.error}</span>} />}
           </CardContent>
         </Card>

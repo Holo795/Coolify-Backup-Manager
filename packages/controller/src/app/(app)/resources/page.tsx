@@ -105,12 +105,12 @@ export default async function ResourcesPage({
                             <div className="pointer-events-none flex select-none flex-wrap items-center gap-3 px-4 py-3 blur-[2px]">
                               <span className="font-medium">{r.name}</span>
                               <Badge>{r.type}</Badge>
-                              <span className="text-xs text-muted-foreground">{r.projectName || "—"}</span>
+                              <span className="text-xs text-muted-foreground">{r.projectName || "-"}</span>
                               <Badge tone={statusTone(r.status)}>{r.status}</Badge>
                             </div>
                             <div className="absolute inset-0 flex items-center justify-center px-4">
                               <span className="flex items-center gap-1.5 text-sm font-medium text-[var(--color-warning)]">
-                                <Unplug className="h-4 w-4 shrink-0" /> Agent unavailable — this resource can&apos;t be
+                                <Unplug className="h-4 w-4 shrink-0" /> Agent unavailable - this resource can&apos;t be
                                 backed up
                               </span>
                             </div>
@@ -135,7 +135,7 @@ export default async function ResourcesPage({
                       <td className="px-4 py-2.5">
                         <Badge>{r.type}</Badge>
                       </td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{r.projectName || "—"}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{r.projectName || "-"}</td>
                       <td className="px-4 py-2.5">
                         <Badge tone={statusTone(r.status)}>{r.status}</Badge>
                       </td>
@@ -186,7 +186,7 @@ export default async function ResourcesPage({
                     <div className="flex flex-wrap items-center gap-2 text-xs">
                       <Badge>{r.type}</Badge>
                       <Badge tone={statusTone(r.status)}>{r.status}</Badge>
-                      <span className="text-muted-foreground">{r.projectName || "—"}</span>
+                      <span className="text-muted-foreground">{r.projectName || "-"}</span>
                     </div>
                     <ResourceToggles id={r.id} backupEnabled={r.backupEnabled} liveBackup={r.liveBackup} />
                     <ActionButton action={backupNow.bind(null, r.id)} variant="primary" size="sm" successMsg="Queued">
@@ -220,7 +220,7 @@ export default async function ResourcesPage({
       {orphaned.length > 0 && (
         <details className="mt-8">
           <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">
-            Removed from Coolify · {orphaned.length} — kept for their backups
+            Removed from Coolify · {orphaned.length} - kept for their backups
           </summary>
           <Card className="mt-3">
             <CardContent className="p-0">
@@ -245,7 +245,7 @@ export default async function ResourcesPage({
                       <td className="px-4 py-2.5">
                         <Badge>{r.type}</Badge>
                       </td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{r.projectName || "—"}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{r.projectName || "-"}</td>
                       <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{r._count.snapshots}</td>
                       <td className="px-4 py-2.5 text-right">
                         <a href={`/resources/${r.id}`} className="text-xs text-accent hover:underline">
@@ -274,7 +274,7 @@ export default async function ResourcesPage({
             </CardContent>
           </Card>
           <p className="mt-2 text-xs text-muted-foreground">
-            These no longer exist in Coolify. You can&apos;t back them up, but their snapshots are kept — restore them
+            These no longer exist in Coolify. You can&apos;t back them up, but their snapshots are kept - restore them
             (e.g. “→ new” to recreate the resource).
           </p>
         </details>

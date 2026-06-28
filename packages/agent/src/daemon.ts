@@ -15,7 +15,7 @@ export async function startDaemon(): Promise<void> {
   // Register if we don't have a token yet.
   if (!cfg.agentToken) {
     if (!cfg.enrollmentToken) {
-      throw new Error("No AGENT_TOKEN and no ENROLLMENT_TOKEN — cannot register");
+      throw new Error("No AGENT_TOKEN and no ENROLLMENT_TOKEN - cannot register");
     }
     try {
       const res = await withRetry("register", () => client.register(cfg));
@@ -68,7 +68,7 @@ export async function startDaemon(): Promise<void> {
       startJob(job);
     }
     // After the fill loop the queue is empty or we're full. Either way, wait for
-    // a job to finish (frees a slot) or a poll tick before polling again — never
+    // a job to finish (frees a slot) or a poll tick before polling again - never
     // spin. With nothing running, just sleep the poll interval.
     if (inFlight.size === 0) {
       await sleep(cfg.pollIntervalMs);
@@ -100,7 +100,7 @@ async function withRetry<T>(label: string, fn: () => Promise<T>, attempts = 30):
       return await fn();
     } catch (e) {
       lastErr = e;
-      // Auth failures aren't transient — don't burn retries on a bad token.
+      // Auth failures aren't transient - don't burn retries on a bad token.
       if (/\b401\b/.test((e as Error).message)) throw e;
       logger.warn(`${label} attempt ${i + 1} failed: ${(e as Error).message}`);
       await sleep(2000);

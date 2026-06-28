@@ -91,7 +91,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const present = result.verify.present;
     const missing = result.verify.missing;
     // present/missing carry restic snapshot ids (restic engine) or snapshot
-    // directories (tar engine) — match snapshots on the matching column.
+    // directories (tar engine) - match snapshots on the matching column.
     const match = (vals: string[]) =>
       isRestic ? { resticSnapshotId: { in: vals } } : { destinationDir: { in: vals } };
     if (destinationId) {
@@ -105,7 +105,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         });
       }
       if (missing.length) {
-        // Newly missing = not already flagged — alert only on these.
+        // Newly missing = not already flagged - alert only on these.
         const newly = await prisma.snapshot.findMany({
           where: { destinationId, ...match(missing), status: { not: "missing" } },
           select: { id: true },

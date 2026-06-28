@@ -29,7 +29,7 @@ export default async function DestinationsPage() {
     <>
       <PageHeader
         title="Destinations"
-        description={`Where backups are stored — local, SSH/SFTP, or S3 · ${formatBytes(globalBytes)} stored across all destinations`}
+        description={`Where backups are stored - local, SSH/SFTP, or S3 · ${formatBytes(globalBytes)} stored across all destinations`}
       />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">

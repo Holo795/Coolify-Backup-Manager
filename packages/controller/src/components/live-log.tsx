@@ -76,7 +76,7 @@ export function LiveLog({
             live
           </span>
         ) : (
-          <span>finished — {status}</span>
+          <span>finished - {status}</span>
         )}
         <span>· {events.length} events</span>
       </div>

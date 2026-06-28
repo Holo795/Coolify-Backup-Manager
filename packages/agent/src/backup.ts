@@ -106,7 +106,7 @@ export async function runBackup(job: BackupJob, workDir: string, emit: Emit): Pr
           await pauseContainer(c);
           paused.push(c);
         }
-        if (liveBackup) emit("warn", `Live copy of ${t.source} without freezing (at your own risk) — may be inconsistent`);
+        if (liveBackup) emit("warn", `Live copy of ${t.source} without freezing (at your own risk) - may be inconsistent`);
         emit("info", `Archiving ${t.label} (${i}/${total})`, 20 + (50 * i) / Math.max(1, total));
         const path = join(stage, t.fileName);
         await tarVolume(t.source, path);
@@ -135,14 +135,14 @@ export async function runBackup(job: BackupJob, workDir: string, emit: Emit): Pr
         const creds = await readDbCredentials(container, engine);
         const name = `dump-${engine}-${container}.rdb`.replace(/[^a-zA-Z0-9._-]+/g, "_");
         const path = join(stage, name);
-        emit("info", `Exporting ${engine} (${container}) via RDB — no freeze`, progress);
+        emit("info", `Exporting ${engine} (${container}) via RDB - no freeze`, progress);
         await dumpRedis(container, creds?.password, path);
         return await finalizeArtifact("db-dump", name, path, { engine, container, ...meta }, job, stage, emit);
       }
       const creds = await readDbCredentials(container, engine);
       const name = `dump-${engine}-${container}.sql`.replace(/[^a-zA-Z0-9._-]+/g, "_");
       const path = join(stage, name);
-      emit("info", `Dumping ${engine} (${container}) — no downtime`, progress);
+      emit("info", `Dumping ${engine} (${container}) - no downtime`, progress);
       await dumpDatabase(engine, container, creds ?? {}, path);
       return await finalizeArtifact("db-dump", name, path, { engine, container, ...meta }, job, stage, emit);
     } catch (e) {
@@ -160,7 +160,7 @@ export async function runBackup(job: BackupJob, workDir: string, emit: Emit): Pr
   try {
   // Pre-backup hooks: run inside their container(s); a failure aborts the backup
   // (the operator wanted the app quiesced first). They run INSIDE the try so the
-  // post hooks (finally below) still run to undo them — e.g. bring an app back
+  // post hooks (finally below) still run to undo them - e.g. bring an app back
   // out of maintenance even when a pre hook or the backup failed.
   for (const h of hooks) {
     if (!h.pre) continue;
@@ -193,7 +193,7 @@ export async function runBackup(job: BackupJob, workDir: string, emit: Emit): Pr
     }
     captureMethod = "dump+live";
   } else if (isDb) {
-    // Standalone database: always a logical dump while running — no downtime,
+    // Standalone database: always a logical dump while running - no downtime,
     // no restart, application-consistent.
     if (!primary) throw new Error("Database backup requires a container name");
     emit("info", `Dumping database via ${resource.type} (no downtime)`, 20);
@@ -221,7 +221,7 @@ export async function runBackup(job: BackupJob, workDir: string, emit: Emit): Pr
   } else {
     // Apps & services: capture every volume + bind mount (no restart), AND give
     // any database living inside the resource (e.g. the Postgres in a compose
-    // service) a logical export on top — application-consistent and restorable
+    // service) a logical export on top - application-consistent and restorable
     // across engine versions. The volume copy is kept so "→ new" still works.
     const dbs = await findDbContainers(containers);
     let dumped = 0;
@@ -236,13 +236,13 @@ export async function runBackup(job: BackupJob, workDir: string, emit: Emit): Pr
     captureMethod = dumped > 0 ? `dump+${volMethod}` : volMethod;
   }
 
-  // Config artifact (resource descriptor + provenance) — sensitive, encrypt if enabled.
+  // Config artifact (resource descriptor + provenance) - sensitive, encrypt if enabled.
   const config = { resource, provenance };
   const configPath = join(stage, CONFIG_FILE);
   await writeFile(configPath, JSON.stringify(config, null, 2));
   artifacts.push(await finalizeArtifact("config", CONFIG_FILE, configPath, {}, job, stage, emit));
 
-  // Strip DB credentials from the manifest — it is stored unencrypted on the
+  // Strip DB credentials from the manifest - it is stored unencrypted on the
   // destination. Credentials are re-resolved from the live container at restore.
   const { db: _omitDb, ...sanitizedResource } = resource;
   const manifest: SnapshotManifest = {

@@ -8,7 +8,7 @@ export interface RunResult {
 
 /**
  * Spawn a process and buffer stdout/stderr as strings. A non-zero exit is NOT an
- * error here — the caller inspects `code` (many callers expect a failing exit,
+ * error here - the caller inspects `code` (many callers expect a failing exit,
  * e.g. `docker inspect` on a missing container). Rejects only if the process
  * fails to spawn.
  */

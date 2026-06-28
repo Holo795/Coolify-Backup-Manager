@@ -108,7 +108,7 @@ export function isValidCron(expr: string): boolean {
  *
  * Note: on a spring-forward DST day a wall-clock minute that the cron targets
  * (e.g. 02:30 when the clock jumps 02:00→03:00) doesn't exist, so the scan finds
- * the previous valid fire instead — the missed-backup alert may be a day late
+ * the previous valid fire instead - the missed-backup alert may be a day late
  * for that one schedule on that one day. Acceptable for an alerting heuristic.
  */
 export function previousFireWithin(expr: string, now: Date, timeZone = "UTC", maxDays = 40): Date | null {

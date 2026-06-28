@@ -99,7 +99,7 @@ export default async function InstancesPage() {
               {policy.retentionMonthly}m
             </span>
           ) : (
-            <span className="text-[var(--color-warning)]">No backup schedule — nothing runs automatically.</span>
+            <span className="text-[var(--color-warning)]">No backup schedule - nothing runs automatically.</span>
           )}
           {policy && remove && (
             <form action={remove}>
@@ -216,7 +216,7 @@ export default async function InstancesPage() {
                             <ShieldCheck className="h-3.5 w-3.5" /> Back up Coolify
                           </ActionButton>
                         ) : (
-                          <Button variant="outline" size="sm" disabled title="No live agent — install the agent below first">
+                          <Button variant="outline" size="sm" disabled title="No live agent - install the agent below first">
                             <ShieldCheck className="h-3.5 w-3.5" /> Back up Coolify
                           </Button>
                         )}
@@ -224,7 +224,7 @@ export default async function InstancesPage() {
                       <RevealInstall instanceId={i.id} hasToken={!!i.enrollTokenHash} />
                       {multiServer && (
                         <p className="text-xs text-muted-foreground">
-                          This instance spans several servers — install the agent (same command) on each host below.
+                          This instance spans several servers - install the agent (same command) on each host below.
                         </p>
                       )}
                     </div>

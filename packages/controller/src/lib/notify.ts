@@ -27,8 +27,8 @@ export async function sendTestAlert(url: string): Promise<boolean> {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      content: "✅ CBM (Coolify Backup Manager) — test notification. Webhook is working.",
-      text: "✅ CBM (Coolify Backup Manager) — test notification. Webhook is working.",
+      content: "✅ CBM (Coolify Backup Manager) - test notification. Webhook is working.",
+      text: "✅ CBM (Coolify Backup Manager) - test notification. Webhook is working.",
     }),
   })
     .then((r) => r.ok)
@@ -53,7 +53,7 @@ export async function notifyMissingBackups(snapshotIds: string[]): Promise<void>
   const more = snaps.length > 20 ? `\n…and ${snaps.length - 20} more` : "";
   const link = base ? `\n${base}/snapshots` : "";
   await sendAlert(
-    `⚠️ Backup(s) missing from destination — files were deleted at rest:\n${lines.join("\n")}${more}${link}`,
+    `⚠️ Backup(s) missing from destination - files were deleted at rest:\n${lines.join("\n")}${more}${link}`,
   );
 }
 
@@ -63,11 +63,11 @@ export async function notifyOverdue(
 ): Promise<void> {
   if (items.length === 0) return;
   const base = (env.authUrl || "").replace(/\/$/, "");
-  const lines = items.slice(0, 20).map((i) => `• ${i.name} (${i.instance}) — due ${i.due.toISOString()}`);
+  const lines = items.slice(0, 20).map((i) => `• ${i.name} (${i.instance}) - due ${i.due.toISOString()}`);
   const more = items.length > 20 ? `\n…and ${items.length - 20} more` : "";
   const link = base ? `\n${base}/snapshots` : "";
   await sendAlert(
-    `⏰ Scheduled backup overdue — these resources have NOT been backed up on time:\n${lines.join("\n")}${more}${link}`,
+    `⏰ Scheduled backup overdue - these resources have NOT been backed up on time:\n${lines.join("\n")}${more}${link}`,
   );
 }
 
@@ -80,6 +80,6 @@ export async function notifyBackupFailed(snapshotId: string): Promise<void> {
   const base = (env.authUrl || "").replace(/\/$/, "");
   const link = base ? `\n${base}/snapshots/${snap.id}` : "";
   await sendAlert(
-    `❌ Backup failed — **${snap.resource.name}** (${snap.resource.instance.name})\n${snap.error ?? "unknown error"}${link}`,
+    `❌ Backup failed - **${snap.resource.name}** (${snap.resource.instance.name})\n${snap.error ?? "unknown error"}${link}`,
   );
 }
