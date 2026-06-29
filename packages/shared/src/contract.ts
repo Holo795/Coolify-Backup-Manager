@@ -1,13 +1,5 @@
 import { z } from "zod";
-import {
-  ArtifactKind,
-  DestinationType,
-  EventLevel,
-  JobStatus,
-  JobType,
-  PolicyMode,
-  ResourceType,
-} from "./enums.js";
+import { ArtifactKind, EventLevel, JobStatus, JobType, PolicyMode, ResourceType } from "./enums.js";
 
 /* ------------------------------------------------------------------ *
  * Destination (resolved config sent to the agent for a single job)    *

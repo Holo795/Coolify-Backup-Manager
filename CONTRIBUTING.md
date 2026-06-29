@@ -42,16 +42,17 @@ These same checks run automatically in CI on every pull request (see
 locally first just gives you faster feedback:
 
 ```bash
-npm run build:shared                 # shared types must compile first
-npm test                             # unit tests (shared + agent)
-npm run test --workspace @cbm/controller   # unit tests (controller)
-# In packages/controller:
-npx tsc --noEmit                     # type-check the controller
+npm run lint        # ESLint across all packages
+npm run typecheck   # type-check every package (builds @cbm/shared first)
+npm test            # unit tests (shared + agent + controller)
 ```
+
+Each of these is a generic, repo-wide command — there's nothing extra to run per package.
 
 - Keep pull requests **focused** — one logical change per PR.
 - Match the **style of the surrounding code** (TypeScript, existing naming and comment
-  density). No new formatter/lint config in a feature PR.
+  density), and keep `npm run lint` clean. ESLint config lives in `eslint.config.mjs` at the
+  repo root — leave rule changes out of feature PRs.
 - If you change the Prisma schema, add a **migration** under
   `packages/controller/prisma/migrations/` (the deploy step runs `prisma migrate deploy`).
 - If you change the agent/controller contract, update `@cbm/shared` and rebuild it.

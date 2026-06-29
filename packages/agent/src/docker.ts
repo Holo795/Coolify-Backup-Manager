@@ -50,7 +50,17 @@ export async function dockerFromFile(args: string[], inFile: string): Promise<vo
   }
 }
 
-export async function inspectContainer(name: string): Promise<any | null> {
+/** The subset of `docker inspect` JSON the agent reads (the rest stays dynamic). */
+export interface DockerInspect {
+  Id?: string;
+  Image?: string;
+  RepoDigests?: string[];
+  Config?: { Image?: string; Labels?: Record<string, string>; Env?: string[] };
+  Mounts?: Array<{ Type?: string; Source?: string; Name?: string; RW?: boolean }>;
+  [k: string]: unknown;
+}
+
+export async function inspectContainer(name: string): Promise<DockerInspect | null> {
   const r = await docker(["inspect", name]);
   if (r.code !== 0) return null;
   try {
@@ -61,7 +71,7 @@ export async function inspectContainer(name: string): Promise<any | null> {
   }
 }
 
-export async function inspectImage(image: string): Promise<any | null> {
+export async function inspectImage(image: string): Promise<DockerInspect | null> {
   const r = await docker(["image", "inspect", image]);
   if (r.code !== 0) return null;
   try {

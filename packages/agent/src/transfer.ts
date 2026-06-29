@@ -123,7 +123,7 @@ function sshTransfer(dest: Extract<ResolvedDestination, { type: "ssh" }>): Promi
         async function walk(dir: string, prefix: string) {
           let entries: Array<{ name: string; type: string }> = [];
           try {
-            entries = (await client.list(dir)) as any;
+            entries = (await client.list(dir)) as Array<{ name: string; type: string }>;
           } catch {
             return;
           }
@@ -201,7 +201,7 @@ function s3Transfer(dest: Extract<ResolvedDestination, { type: "s3" }>): Promise
         await mkdir(dirname(localFile), { recursive: true });
         const res = await client.send(new GetObjectCommand({ Bucket: dest.bucket, Key: key(relPath) }));
         const ws = createWriteStream(localFile);
-        (res.Body as any).pipe(ws);
+        (res.Body as NodeJS.ReadableStream).pipe(ws);
         await once(ws, "close");
       },
       list,

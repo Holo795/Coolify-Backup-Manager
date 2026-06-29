@@ -39,6 +39,28 @@ export interface DbConfig {
 /** All standalone-database engines Coolify can create via the API. */
 export type CloneEngine = DbEngine | "redis" | "keydb" | "dragonfly" | "clickhouse";
 
+/** Loosely-typed Coolify API resource JSON — only the fields we read are named. */
+interface CoolifyRaw {
+  uuid?: string;
+  name?: string;
+  type?: string;
+  database_type?: string;
+  status?: string;
+  environment_id?: number;
+  project_name?: string;
+  build_pack?: string;
+  destination?: { server?: { uuid?: string; name?: string } };
+  server?: { uuid?: string; name?: string };
+  [k: string]: unknown;
+}
+
+/** A Coolify project as returned by /api/v1/projects (+ detail). */
+interface CoolifyProjectRaw {
+  uuid?: string;
+  name?: string;
+  environments?: Array<{ id?: number; name?: string }>;
+}
+
 /** Image tags that move over time - a clone must pin the digest, not the tag. */
 const FLOATING_IMAGE_TAGS = ["latest", "main", "master", "stable", "edge", "nightly"];
 
@@ -230,11 +252,11 @@ export class CoolifyClient {
   }
 
   /** Raw config of an application / service resource. */
-  async getApplication(uuid: string): Promise<Record<string, any>> {
-    return this.get<Record<string, any>>(`/api/v1/applications/${uuid}`);
+  async getApplication(uuid: string): Promise<CoolifyRaw> {
+    return this.get<CoolifyRaw>(`/api/v1/applications/${uuid}`);
   }
-  async getService(uuid: string): Promise<Record<string, any>> {
-    return this.get<Record<string, any>>(`/api/v1/services/${uuid}`);
+  async getService(uuid: string): Promise<CoolifyRaw> {
+    return this.get<CoolifyRaw>(`/api/v1/services/${uuid}`);
   }
 
   /**
@@ -376,13 +398,13 @@ export class CoolifyClient {
 
   /** Resolve a private SSH key's uuid from its numeric id (deploy-key clones). */
   async resolvePrivateKeyUuid(id: number): Promise<string | undefined> {
-    const keys = await this.get<any[]>("/api/v1/security/keys").catch(() => []);
+    const keys = await this.get<Array<{ id?: number; uuid?: string }>>("/api/v1/security/keys").catch(() => []);
     return (keys ?? []).find((k) => k?.id === id)?.uuid;
   }
 
   /** Resolve a git source's (GitHub App) uuid from its numeric id. */
   async resolveSourceUuid(id: number): Promise<string | undefined> {
-    const sources = await this.get<any[]>("/api/v1/sources").catch(() => []);
+    const sources = await this.get<Array<{ id?: number; uuid?: string }>>("/api/v1/sources").catch(() => []);
     return (sources ?? []).find((s) => s?.id === id)?.uuid;
   }
 
@@ -424,7 +446,7 @@ export class CoolifyClient {
 
   /** Read a resource's environment variables (excluding Coolify-managed ones). */
   async getEnvVars(kind: "applications" | "services", uuid: string): Promise<Array<Record<string, unknown>>> {
-    const envs = await this.get<any[]>(`/api/v1/${kind}/${uuid}/envs`).catch(() => []);
+    const envs = await this.get<Array<Record<string, unknown>>>(`/api/v1/${kind}/${uuid}/envs`).catch(() => []);
     return (envs ?? []).filter((e) => e?.key && !e.is_coolify);
   }
 
@@ -497,13 +519,13 @@ export class CoolifyClient {
   private async envMap(): Promise<Map<number, { project: string; environment: string }>> {
     const map = new Map<number, { project: string; environment: string }>();
     try {
-      const projects = await this.get<any[]>("/api/v1/projects");
+      const projects = await this.get<CoolifyProjectRaw[]>("/api/v1/projects");
       for (const p of projects ?? []) {
         // The list endpoint usually omits nested environments; fetch detail.
         let envs = p.environments;
         let name = p.name;
         if ((!envs || envs.length === 0) && p.uuid) {
-          const detail = await this.get<any>(`/api/v1/projects/${p.uuid}`).catch(() => null);
+          const detail = await this.get<CoolifyProjectRaw>(`/api/v1/projects/${p.uuid}`).catch(() => null);
           if (detail) {
             envs = detail.environments ?? [];
             name = detail.name ?? name;
@@ -524,7 +546,7 @@ export class CoolifyClient {
   /** Discover all resources, normalized. */
   /** List the Coolify servers managed by this instance. */
   async listServers(): Promise<CoolifyServer[]> {
-    const raw = await this.get<any[]>("/api/v1/servers").catch(() => []);
+    const raw = await this.get<Array<{ uuid?: string; name?: string; ip?: string }>>("/api/v1/servers").catch(() => []);
     return (raw ?? [])
       .filter((s) => s?.uuid)
       .map((s) => ({ uuid: s.uuid as string, name: (s.name ?? s.uuid) as string, ip: s.ip as string | undefined }));
@@ -534,15 +556,15 @@ export class CoolifyClient {
     const envs = await this.envMap();
     const out: CoolifyResource[] = [];
 
-    const apps = await this.get<any[]>("/api/v1/applications").catch(() => []);
+    const apps = await this.get<CoolifyRaw[]>("/api/v1/applications").catch(() => []);
     for (const a of apps ?? []) {
       out.push(this.normalize(a, "application", envs));
     }
-    const dbs = await this.get<any[]>("/api/v1/databases").catch(() => []);
+    const dbs = await this.get<CoolifyRaw[]>("/api/v1/databases").catch(() => []);
     for (const d of dbs ?? []) {
       out.push(this.normalize(d, undefined, envs));
     }
-    const svcs = await this.get<any[]>("/api/v1/services").catch(() => []);
+    const svcs = await this.get<CoolifyRaw[]>("/api/v1/services").catch(() => []);
     for (const s of svcs ?? []) {
       out.push(this.normalize(s, "service", envs));
     }
@@ -550,7 +572,7 @@ export class CoolifyClient {
   }
 
   private normalize(
-    r: any,
+    r: CoolifyRaw,
     forcedType: string | undefined,
     envs: Map<number, { project: string; environment: string }>,
   ): CoolifyResource {
@@ -562,8 +584,8 @@ export class CoolifyClient {
     // directly under server (services). Same access path as the clone helpers.
     const server = r.destination?.server ?? r.server;
     return {
-      uuid: r.uuid,
-      name: r.name ?? r.uuid,
+      uuid: r.uuid ?? "",
+      name: r.name ?? r.uuid ?? "",
       type,
       rawType,
       status: typeof r.status === "string" ? r.status : "unknown",

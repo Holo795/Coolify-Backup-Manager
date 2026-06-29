@@ -1,6 +1,6 @@
 {
   "name": "coolify-backup-manager",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "private": true,
   "description": "Self-hostable backup & restore manager for Coolify (controller + agents).",
   "workspaces": [
@@ -14,8 +14,14 @@
   "scripts": {
     "build:shared": "npm run build --workspace @cbm/shared",
     "build": "npm run build --workspace @cbm/shared && npm run build --workspace @cbm/agent && npm run build --workspace @cbm/controller",
-    "test": "npm run test --workspace @cbm/shared && npm run test --workspace @cbm/agent",
+    "test": "npm run test --workspace @cbm/shared && npm run test --workspace @cbm/agent && npm run test --workspace @cbm/controller",
+    "lint": "eslint .",
+    "typecheck": "npm run build:shared && tsc --noEmit -p packages/agent/tsconfig.json && tsc --noEmit -p packages/controller/tsconfig.json",
     "dev:controller": "npm run dev --workspace @cbm/controller",
     "dev:agent": "npm run dev --workspace @cbm/agent"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.9"
   }
 }

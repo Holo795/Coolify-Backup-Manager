@@ -29,14 +29,12 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Build shared types
-        run: npm run build:shared
+      - name: Lint (all packages)
+        run: npm run lint
 
-      - name: Unit tests (shared + agent)
+      # Builds @cbm/shared first, then type-checks the agent and controller.
+      - name: Type-check (all packages)
+        run: npm run typecheck
+
+      - name: Unit tests (shared + agent + controller)
         run: npm test
-
-      - name: Unit tests (controller)
-        run: npm run test --workspace @cbm/controller
-
-      - name: Type-check controller
-        run: npx tsc --noEmit -p packages/controller/tsconfig.json

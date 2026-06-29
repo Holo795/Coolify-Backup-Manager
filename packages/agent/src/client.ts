@@ -8,7 +8,10 @@ import {
 import type { AgentConfig } from "./config.js";
 
 async function req(cfg: AgentConfig, path: string, init: RequestInit, auth = true): Promise<Response> {
-  const headers: Record<string, string> = { "content-type": "application/json", ...(init.headers as any) };
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    ...(init.headers as Record<string, string> | undefined),
+  };
   if (auth && cfg.agentToken) headers["authorization"] = `Bearer ${cfg.agentToken}`;
   return fetch(`${cfg.controllerUrl}${path}`, { ...init, headers });
 }
