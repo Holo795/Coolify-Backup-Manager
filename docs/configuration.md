@@ -29,6 +29,22 @@ Set the pair(s) you want; the provider button appears on the login page when con
 | Google | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
 | GitLab | `GITLAB_ISSUER`, `GITLAB_CLIENT_ID`, `GITLAB_CLIENT_SECRET` |
 
+### Email (SMTP)
+
+Optional — enables password reset, account verification, and emailed invitations. You can
+also set these from **Settings → Email** in the UI; **any value set here overrides the UI and
+locks that field** (config-as-code wins). Env-provided SMTP is trusted (no "send test"
+needed). Full guide: **[Email (SMTP)](email.md)**.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `SMTP_HOST` | — | SMTP server hostname, e.g. `smtp.mailgun.org`. |
+| `SMTP_PORT` | — | `587` (STARTTLS) or `465` (implicit TLS). |
+| `SMTP_SECURE` | `false` | `true` for implicit TLS (port 465). |
+| `SMTP_USER` / `SMTP_PASSWORD` | — | SMTP credentials. |
+| `SMTP_FROM` | — | From address, e.g. `backups@yourdomain.com`. |
+| `SMTP_FROM_NAME` | — | Optional display name, e.g. `CBM Backups`. |
+
 ---
 
 ## Agent environment variables

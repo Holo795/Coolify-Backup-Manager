@@ -35,7 +35,17 @@ repository passwords — are **AES-256-GCM encrypted at rest** with your `MASTER
 - Backups can contain your application data and secrets; secure your destinations accordingly
   (encryption at rest, restricted access).
 
-## Accounts
+## Accounts & roles
 
 The **first registered account is the administrator**, after which public sign-up closes. Add
 OAuth providers (GitHub/Google/GitLab) if you prefer SSO — see [Configuration](configuration.md).
+
+Additional users join by **invitation** with a role — **admin / operator / viewer**. Role
+checks are enforced **server-side on every mutating action** (the UI only hides what a role
+can't use, as a convenience). Invitation links are **single-use**, **expire after 48h**, are
+**bound to the invited email**, and are stored only as a **sha256 hash** — the plaintext is
+shown once and never persisted. The last admin can't be demoted or removed. Full details:
+[Accounts & roles](accounts.md).
+
+Email-bearing flows (password reset, verification, emailed invites) require SMTP; the SMTP
+password is encrypted at rest like every other secret. See [Email](email.md).

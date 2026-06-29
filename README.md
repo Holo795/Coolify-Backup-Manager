@@ -20,13 +20,17 @@ resource), and alerts when something fails, goes missing, or never ran.
 
 ## Screenshots
 
-| Overview | Resources | Restore |
+| Overview | Resources | Snapshots & restore |
 | --- | --- | --- |
 | ![Overview](docs/screenshots/overview.png) | ![Resources](docs/screenshots/resources.png) | ![Restore](docs/screenshots/snapshots.png) |
 
-| Destinations (restic) | Command palette | Mobile |
+| Destinations (restic) | Users & roles | Settings (email · alerts) |
 | --- | --- | --- |
-| ![Destinations](docs/screenshots/destinations.png) | ![Search](docs/screenshots/command-palette.png) | ![Mobile](docs/screenshots/mobile.png) |
+| ![Destinations](docs/screenshots/destinations.png) | ![Users](docs/screenshots/users.png) | ![Settings](docs/screenshots/settings.png) |
+
+| Command palette | Mobile |
+| --- | --- |
+| ![Search](docs/screenshots/command-palette.png) | ![Mobile](docs/screenshots/mobile.png) |
 
 ---
 
@@ -80,6 +84,12 @@ needs to actually come back to life isn't covered. CBM backs up the whole resour
   present at its destination; agents run several jobs at once (`AGENT_CONCURRENCY`); and you
   can set **per‑container pre/post‑backup commands** (e.g. quiesce an app, flush a cache).
 - **Scheduling** with grandfather‑father‑son retention, in a **configurable timezone**.
+- **Team access with roles.** Invite people as **admin / operator / viewer** via one‑time
+  invitation links (copy‑paste or emailed). Operators run backups/restores; only admins
+  configure instances, destinations, schedules, and settings — enforced server‑side, with the
+  UI hiding what a role can't use.
+- **Email (SMTP).** Optional self‑service **password reset** and **account verification**;
+  configured from Settings (or env), with a built‑in test that verifies the connection.
 
 ---
 
@@ -132,7 +142,10 @@ reference in **[docs/configuration.md](docs/configuration.md)**.
 ### 2. First run — create the admin
 
 Open your `BETTER_AUTH_URL` and **register**. The **first account becomes the administrator**,
-then sign‑up closes automatically — no seeding, no default password.
+then public sign‑up closes automatically — no seeding, no default password. To add teammates,
+invite them from **Users** with a role (admin / operator / viewer); see
+**[docs/accounts.md](docs/accounts.md)**. For password reset and verification emails, configure
+SMTP in **Settings → Email** (**[docs/email.md](docs/email.md)**).
 
 ### 3. Connect Coolify & install agents
 
@@ -160,8 +173,11 @@ docker compose -f docker-compose.dev.yml up -d                 # controller Post
 cp packages/controller/.env.example packages/controller/.env   # edit secrets
 npm run db:push --workspace @cbm/controller
 npm run dev --workspace @cbm/controller                        # http://localhost:3000
-npm run test                                                   # unit tests
+npm run lint && npm run typecheck && npm test                  # the CI checks, repo‑wide
 ```
+
+The dev compose also starts **[Mailpit](https://mailpit.axllent.org)** (a catch‑all SMTP
+inbox on `:8025`) so you can test the email flows locally — see [docs/email.md](docs/email.md).
 
 ---
 
@@ -171,6 +187,8 @@ Detailed docs live in **[`/docs`](docs/)**:
 
 - [Installation](docs/installation.md) — controller, agents, on Coolify
 - [Configuration](docs/configuration.md) — every environment variable
+- [Accounts & roles](docs/accounts.md) — users, roles, invitation links
+- [Email (SMTP)](docs/email.md) — password reset, verification, dev mailer
 - [Destinations](docs/destinations.md) — local · SSH/SFTP · jump host · S3 · tar vs restic
 - [Backups](docs/backups.md) — how each resource type is captured, hooks, live mode
 - [Restore](docs/restore.md) — in place vs → new
@@ -202,6 +220,8 @@ Being upfront so you don't lose data by surprise.
   encrypted at rest** with `MASTER_KEY` (falls back to `BETTER_AUTH_SECRET`).
 - Agents authenticate with a bearer token (sha256‑hashed in the DB); enrollment tokens are
   one‑time and shown once.
+- **Role‑based access** (admin / operator / viewer) is enforced on every mutating action
+  server‑side; invitation links are single‑use, expiring, and stored only as a sha256 hash.
 - The Docker socket grants root‑equivalent access — agents run trusted on each host.
 
 More in [docs/security.md](docs/security.md).

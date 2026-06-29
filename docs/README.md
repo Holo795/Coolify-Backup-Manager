@@ -5,6 +5,8 @@ Detailed docs for **CBM — Coolify Backup Manager**. New here? Start with the
 
 - **[Installation](installation.md)** — run the controller, install agents, deploy on Coolify
 - **[Configuration](configuration.md)** — every environment variable (controller & agent)
+- **[Accounts & roles](accounts.md)** — users, roles (admin/operator/viewer), invitation links
+- **[Email (SMTP)](email.md)** — password reset, account verification, the Mailpit dev mailer
 - **[Destinations](destinations.md)** — local · SSH/SFTP · jump host · S3 · tar vs restic engine
 - **[Backups](backups.md)** — how each resource type is captured, hooks, live mode, scheduling
 - **[Restore](restore.md)** — in place vs → new (clone)
