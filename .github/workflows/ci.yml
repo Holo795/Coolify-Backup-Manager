@@ -25,9 +25,11 @@ jobs:
           node-version: 22
           cache: npm
 
-      # postinstall generates the Prisma client (needed for the controller type-check)
+      # `npm install` (not `npm ci`) to match the Dockerfiles and tolerate the
+      # platform-specific optional native deps some lint tooling pulls in.
+      # postinstall generates the Prisma client (needed for the controller type-check).
       - name: Install
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Lint (all packages)
         run: npm run lint
